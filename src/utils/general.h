@@ -27,7 +27,6 @@
 #define NULL_MPI_PROC (mpiproc_t){.id = -1}   // Macro NULL process initializer (dummy)
 #define MPI_PROC_NULL(proc) ((proc).id == -1) // Macro to find when a process is set to NULL (doesn't exist)
 
-#define N 2 // The length of one dimension of the library grid
 #define MAX_BOOK_PRICE 100 // The upper bound for the randomized book prices
 #define MIN_BOOK_PRICE 5   // The lower bound -//-
 
@@ -39,6 +38,7 @@ typedef enum{FALSE, TRUE}   bool;
 
 struct mpiproc{
     mpipid_t id; // The unique id given to the process through mpi, -1 is nullval
+    int N;       // The size of one library grid dimension
 };
 
 struct gridpos{ // The i j coordinates of a libary in the grid

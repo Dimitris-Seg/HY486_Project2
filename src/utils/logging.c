@@ -23,6 +23,15 @@
 #include<time.h>
 //
 
+#if ALL_DEBUG
+#define DEBUGGER_DEFAULT 1
+#else
+#define DEBUGGER_DEFAULT 0
+#endif
+
+bool debugger = DEBUGGER_DEFAULT;
+
+
 string get_current_date() {
     static char buffer[11]; // YYYY-MM-DD + \0
 

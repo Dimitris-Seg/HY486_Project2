@@ -29,7 +29,7 @@
 typedef struct library library_t;
 
 struct library{
-    mpiproc_t self;
+    mpiproc_t node;
 
     gridpos_t coords;
 
@@ -45,7 +45,7 @@ struct library{
 mpiproc_t get_neighbor(gridpos_t coords, mpiproc_t sid, int nid);
 
 /**
- * Initializes the library with id 'id'
+ * Initializes the library with id 'id', with a total of N processes in the system
  */
-library_t library_init(mpipid_t id);
+library_t library_init(mpipid_t id, int N);
 #endif

@@ -24,6 +24,8 @@
 //
 
 mpiproc_t get_neighbor(gridpos_t coords, mpiproc_t proc, int nid){
+    int N = proc.N;
+
     switch(nid){
     case 0: // LEFT neighbor
         return (mpiproc_t){.id=(coords.i%N)>0?
@@ -53,20 +55,20 @@ static bookcost_t random_book_cost(){
     return MIN_BOOK_PRICE+(rand()%(MAX_BOOK_PRICE-MIN_BOOK_PRICE+1));
 }
 
-library_t library_init(mpipid_t id){
+library_t library_init(mpipid_t id, int N){
     library_t lib = {
-        .self           = {.id = id},
+        .node           = {.id = id, .N = N},
         .coords         = (gridpos_t){.i = id%N, .j = id/N},
         .books          = bookstorage_create(N*N), // Use N*N buckets
     };
 
     for(int nid = 0;nid < 4; ++nid){
-        lib.neighbors[nid] = get_neighbor(lib.coords, lib.self, nid);
+        lib.neighbors[nid] = get_neighbor(lib.coords, lib.node, nid);
     }
 
-    bookid_t b_id = lib.self.id;
+    bookid_t b_id = lib.node.id;
 
-    for(size_t i=0;i<N;++i){
+    for(int i=0;i<N;++i){
         // Mass store N books with id b_id
         bookstorage_mass_store(lib.books, (book_t){.id = b_id, .cost = random_book_cost()}, N);
         ++b_id;

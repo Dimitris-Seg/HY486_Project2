@@ -20,12 +20,9 @@
 
 #include "client.h"
 
-/**
- * Initializes the client/borrower with id 'id'
- */
-client_t client_init(mpipid_t id){
+client_t client_init(mpipid_t id, int N){
     client_t client = {
-        .self     = {.id = id},
+        .self     = {.id = id, .N = N},
         .neigbors = sllist_create(),
         .books    = bookstorage_create(N*N), // Use N*N buckets
     };

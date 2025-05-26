@@ -1,7 +1,7 @@
 # Author: 	Dimitris Segkesser
 # Date: 	25/05/2025
 
-CC := gcc
+CC := mpicc
 CFLAGS := -Wall -Wextra -std=c11 -g -MMD -MP
 LDFLAGS :=   # ADD MPI flag here
 SRC_DIR := ./src

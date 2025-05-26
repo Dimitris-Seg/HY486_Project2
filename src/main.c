@@ -25,6 +25,7 @@
 //
 #include <stdlib.h>
 #include <time.h>
+#include <mpi/mpi.h>
 //
 
 void print_books(bookstorage_node_t node, void *args){
@@ -34,19 +35,52 @@ void print_books(bookstorage_node_t node, void *args){
 }
 
 // Test main
-int main(){
+int main(int argc, char *argv[]){
     srand(time(NULL)); // Seed randomizer
+    
+    MPI_Init(&argc, &argv); // Setup mpi 
 
-    PRINT_WATERMARK();
+    //-- MPI is ready now --//
 
-    library_t lib = library_init(0);
+    int N = -1;
 
-    INFO(
-        "Library %d is at (%d, %d) with neighbors [%d, %d, %d, %d]", 
-        lib.self.id, lib.coords.i, lib.coords.j, lib.neighbors[0].id, lib.neighbors[1].id, lib.neighbors[2].id, lib.neighbors[3].id
-    );
+    if(argc > 1){
+        N = atoi(argv[1]);
+    }
+    
+    if(N<=0){
+        ERROR("Invalid usage, expected positive int N (size of library grid dimension) as argument");
+        exit(EXIT_FAILURE);
+    }
 
-    bookstorage_map(lib.books, print_books, NULL);
+    int size, rank;
+    MPI_Comm_size(MPI_COMM_WORLD, &size); // The total number of processes running in this mpi session
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank); // The current process's rank
 
-    client_t client = client_init(1);
+    if(size != N*N+(N*N*N/2)+1){
+        ERROR("The provided N and np values (N=%d, np=%d) don't match", N, size);
+        exit(EXIT_FAILURE);
+    }
+
+    if(rank == 0){
+        // Process 0 is the coordinator
+
+        enable_debugger(); // Enables the debugger for the coordinator
+        PRINT_WATERMARK();
+        INFO("Process %d says: I'm a coordinator!", rank);
+    }else if(rank<=N*N){
+        // Process simulates a library
+        // N^2 total libraries
+
+        library_t lib = library_init(rank, N);
+        INFO("Process %d says: I'm a library!", rank);
+    }else if(rank <= N*N+(N*N*N)/2) {
+        // Process simulates a borrower/client
+        // floor(N^3)/2. total clients
+
+        client_t client = client_init(rank, N);
+        INFO("Process %d says: I'm a client!", rank);
+    }
+
+    MPI_Finalize(); // Cleanup mpi environment
 }

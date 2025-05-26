@@ -27,10 +27,19 @@
 #include <time.h>
 //
 
-#define FAIL_ON_ERROR 0
-#define DEBUGGING_ON 0
-#define WATERMARK_ON 1
-#define FLUSH_OUTPUT 0
+extern bool debugger; // Regulates which processes are allowed to print (excluded: print and println)
+
+#define ALL_DEBUG       0 // If true all processes will print debug logs
+#define FAIL_ON_ERROR   0 // The process will automatically fail on the first error if true
+#define DEBUGGING_ON    0 // Enables debug logs (DEBUG & ERROR)
+#define WATERMARK_ON    1 // CSD watermark at the start
+#define FLUSH_OUTPUT    0 // If true all debug (DEBUT & ERROR) output will be flushed
+
+#ifdef ALL_DEBUG
+    #define enable_debugger() (debugger = TRUE)
+#else
+    #define enable_debugger() ((void)0)
+#endif
 
 /**
  * These functions return a static buffer containing the
@@ -41,7 +50,7 @@
 string get_current_date();
 string get_current_time();
 
-#define CUSTOM_LOG(tag, msg, ...) printf("[%s]\t[%s %s] " msg "\n", tag, get_current_date(), get_current_time(), ##__VA_ARGS__)
+#define CUSTOM_LOG(tag, msg, ...) if(debugger)printf("[%s]\t[%s %s] " msg "\n", tag, get_current_date(), get_current_time(), ##__VA_ARGS__)
 
 #if FAIL_ON_ERROR
     #define ERROR(msg, ...) CUSTOM_LOG("ERROR", msg, ##__VA_ARGS__),exit(EXIT_FAILURE)
@@ -67,7 +76,7 @@ string get_current_time();
 #define PRINTLN(msg, ...) PRINT(msg"\n", ##__VA_ARGS__)
 
 #if WATERMARK_ON
-#define PRINT_WATERMARK() printf( \
+#define PRINT_WATERMARK() if(debugger)printf( \
     "\n" \
     "     ===   =====   ===              \n" \
     "   //      ||      ||  \\\\         \n" \

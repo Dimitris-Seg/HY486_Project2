@@ -35,6 +35,9 @@ struct client{
     sllist_t neigbors;  // All books that were in 'self' at some point
 };
 
-client_t client_init(mpipid_t id);
+/**
+ * Initializes the client with id 'id', with a total of N processes in the system
+ */
+client_t client_init(mpipid_t id, int N);
 
 #endif
