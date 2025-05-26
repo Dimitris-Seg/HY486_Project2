@@ -1,0 +1,3 @@
+* What the heck is mpi create struct (investigate)
+* Work on the coordinator (parser looks good, time to test if it works too)
+* Start working on actual message passing, after you figure it out it should come together easily!

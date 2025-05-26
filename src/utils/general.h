@@ -55,4 +55,9 @@ void *safe_malloc(size_t size);
  */
 void *safe_calloc(size_t nmemb, size_t size);
 
+/**
+ * Custom version of realloc that catches allocation errors
+ */
+void *safe_realloc(void *mem, size_t size);
+
 #endif

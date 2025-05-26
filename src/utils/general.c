@@ -43,3 +43,14 @@ void *safe_calloc(size_t nmemb, size_t size){
 
     return alloc;
 }
+
+void *safe_realloc(void *mem, size_t size){
+    void *alloc = realloc(mem, size);
+
+    if(!alloc){
+        ERROR("Failed to allocate %lu bytes", size);
+        exit(EXIT_FAILURE);
+    }
+
+    return alloc;
+}
