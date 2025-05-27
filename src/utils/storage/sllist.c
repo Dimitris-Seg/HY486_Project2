@@ -47,13 +47,14 @@ void sllist_destroy(sllist_t list){
     free(list);
 }
 
-sllist_node_t sllist_search(sllist_t list, sllist_id_t id){
+sllist_node_t sllist_search(sllist_t list, sllist_elem_t elem){
     assert(list);
     
     sllist_node_t it = list->head;
 
-    while(it!=NULL && it->id != id){
-        if(it->id == id){
+    while(it){
+        if(it->elem == elem){
+            // Found
             return it;
         }
         it = it->next;
@@ -62,12 +63,51 @@ sllist_node_t sllist_search(sllist_t list, sllist_id_t id){
     return NULL;
 }
 
-void sllist_add(sllist_t list, sllist_elem_t elem, sllist_id_t id){
+void sllist_add_unique(sllist_t list, sllist_elem_t elem){
+    if(!sllist_search(list, elem)){
+        sllist_add(list, elem);
+    }
+}
+
+void sllist_add(sllist_t list, sllist_elem_t elem){
     assert(list);
 
     sllist_node_t node = safe_malloc(sizeof(struct sllist_node));
     node->elem = elem;
-    node->id   = id;
     node->next = list->head;
     list->head = node;
+}
+
+void sllist_remove(sllist_t list, sllist_elem_t elem){
+    assert(list);
+    
+    sllist_node_t it = list->head;
+    sllist_node_t prev = NULL;
+
+    while(it){
+        if(it->elem == elem){
+            // Found
+            if(prev){
+                prev->next = it->next;
+                free(it);
+            }else{
+                list->head = it->next;
+            }
+        }
+        prev = it;
+        it = it->next;
+    }
+
+    // Element not found, ignore
+}
+
+void sllist_map(sllist_t list, void(*cb)(sllist_node_t, void *), void *args){
+    assert(list);
+
+    sllist_node_t it = list->head;
+    
+    while(it){
+        cb(it, args); // Map
+        it = it->next;
+    }
 }

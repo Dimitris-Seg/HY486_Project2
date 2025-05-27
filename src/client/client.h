@@ -28,7 +28,7 @@
 typedef struct client client_t;
 
 struct client{
-    mpiproc_t self;
+    mpiproc_t node;
 
     bookstorage_t books;    // Holds all books the client has under posession/borrowed
 
@@ -39,5 +39,10 @@ struct client{
  * Initializes the client with id 'id', with a total of N processes in the system
  */
 client_t client_init(mpipid_t id, int N);
+
+/**
+ * Listens for events from the coordinator and performs necessary actions
+ */
+void client_run(client_t self);
 
 #endif

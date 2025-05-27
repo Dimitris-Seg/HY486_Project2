@@ -27,19 +27,24 @@
 #include <time.h>
 //
 
-extern bool debugger; // Regulates which processes are allowed to print (excluded: print and println)
+extern bool debugger;       // Regulates which processes are allowed to print (excluded: print and println)
+extern string process_name; // The current process name for debugging purposes
+extern int process_id;      // The current process id for debugging purposes
 
-#define ALL_DEBUG       0 // If true all processes will print debug logs
+#define ALL_DEBUG       1 // If true all processes can print debug logs
 #define FAIL_ON_ERROR   0 // The process will automatically fail on the first error if true
-#define DEBUGGING_ON    0 // Enables debug logs (DEBUG & ERROR)
+#define DEBUGGING_ON    1 // Enables debug logs (DEBUG & ERROR)
 #define WATERMARK_ON    1 // CSD watermark at the start
 #define FLUSH_OUTPUT    0 // If true all debug (DEBUT & ERROR) output will be flushed
 
 #ifdef ALL_DEBUG
-    #define enable_debugger() (debugger = TRUE)
+    #define ENABLE_DEBUGGER() (debugger = TRUE)
 #else
-    #define enable_debugger() ((void)0)
+    #define ENABLE_DEBUGGER() ((void)0)
 #endif
+
+#define SET_PROCESS_NAME(name) process_name = (name)
+#define SET_PROCESS_ID(id) process_id = (id)
 
 /**
  * These functions return a static buffer containing the
@@ -50,7 +55,7 @@ extern bool debugger; // Regulates which processes are allowed to print (exclude
 string get_current_date();
 string get_current_time();
 
-#define CUSTOM_LOG(tag, msg, ...) if(debugger)printf("[%s]\t[%s %s] " msg "\n", tag, get_current_date(), get_current_time(), ##__VA_ARGS__)
+#define CUSTOM_LOG(tag, msg, ...) if(debugger)printf("[%s]\t[%s %s] [%-11s:%.2d]: " msg "\n", tag, get_current_date(), get_current_time(), process_name, process_id, ##__VA_ARGS__)
 
 #if FAIL_ON_ERROR
     #define ERROR(msg, ...) CUSTOM_LOG("ERROR", msg, ##__VA_ARGS__),exit(EXIT_FAILURE)
@@ -92,5 +97,9 @@ string get_current_time();
 #else
 #define PRINT_WATERMARK()
 #endif
+
+#define PRINT_LOG_HELPER() if(debugger)\
+    printf("[TYPE]  [       DATE        ] [ PROCESS | ID ]   [ MESSAGE ]\n"),\
+    printf("────────────────────────────────────────────────────────────\n")
 
 #endif

@@ -19,6 +19,7 @@
  */
 
 #include "utils/logging.h"
+#include "coordinator/coordinator.h"
 #include "library/library.h"
 #include "client/client.h"
 #include "utils/storage/bookstorage.h"
@@ -62,15 +63,26 @@ int main(int argc, char *argv[]){
         exit(EXIT_FAILURE);
     }
 
-    if(rank == 0){
+    SET_PROCESS_ID(rank); // For debugging
+
+    if(rank == COORDINATOR_INDEX){
         // Process 0 is the coordinator
 
-        enable_debugger(); // Enables the debugger for the coordinator
+        ENABLE_DEBUGGER(); // Enables the debugger for the coordinator
+
+        SET_PROCESS_NAME("Coordinator"); // For debugging
+
         PRINT_WATERMARK();
+        PRINT_LOG_HELPER();
         INFO("Process %d says: I'm a coordinator!", rank);
-    }else if(rank<=N*N){
+
+        coordinator_t coord = coordinator_init(rank, N, "./testfiles_hy486/testfile0/loaners_13_libs_9_np_23.txt");
+        coordinator_run(coord);
+    }else if(rank<N*N){
         // Process simulates a library
         // N^2 total libraries
+
+        SET_PROCESS_NAME("Library"); // For debugging
 
         library_t lib = library_init(rank, N);
         INFO("Process %d says: I'm a library!", rank);
@@ -78,8 +90,12 @@ int main(int argc, char *argv[]){
         // Process simulates a borrower/client
         // floor(N^3)/2. total clients
 
-        client_t client = client_init(rank, N);
+        SET_PROCESS_NAME("Loaner"); // For debugging
+
         INFO("Process %d says: I'm a client!", rank);
+
+        client_t client = client_init(rank, N);
+        client_run(client);
     }
 
     MPI_Finalize(); // Cleanup mpi environment

@@ -22,13 +22,13 @@
 
 static token_t to_token(string buff){
     static const string matches[] = {
-        "TT_CONNECT", 
-        "TT_START_LE_LIBR", 
-        "TT_START_LE_LOANERS", 
-        "TT_TAKE_BOOK", 
-        "TT_DONATE_BOOK", 
-        "TT_GET_MOST_POPULAR_BOOK", 
-        "TT_CHECK_NUM_BOOKS_LOANED",
+        "CONNECT", 
+        "START_LE_LIBR", 
+        "START_LE_LOANERS", 
+        "TAKE_BOOK", 
+        "DONATE_BOOK", 
+        "GET_MOST_POPULAR_BOOK", 
+        "CHECK_NUM_BOOKS_LOANED",
     };
 
     static const int matches_len = sizeof(matches)/sizeof(string);

@@ -29,7 +29,9 @@
 #define DEBUGGER_DEFAULT 0
 #endif
 
-bool debugger = DEBUGGER_DEFAULT;
+bool debugger       = DEBUGGER_DEFAULT;
+string process_name = "Unnamed";
+int process_id      = -1;
 
 
 string get_current_date() {

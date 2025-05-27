@@ -28,7 +28,6 @@
  * This module aims to store neighboring processes (for client/borrower processes)
  */
 
-typedef int                 sllist_id_t;   // The chosen id type for elements in the list
 typedef mpipid_t            sllist_elem_t; // The element type stored in sllist
 typedef struct sllist*      sllist_t;
 typedef struct sllist_node* sllist_node_t;
@@ -40,13 +39,21 @@ sllist_t sllist_create();
 void sllist_destroy(sllist_t list);
 
 // Peforms a lookup of the list and returns the element with id 'id', or NULL if not found
-sllist_node_t sllist_search(sllist_t list, sllist_id_t id);
+sllist_node_t sllist_search(sllist_t list, sllist_elem_t id);
 
 // Adds the new element 'elem' to the (start of the) list
-void sllist_add(sllist_t list, sllist_elem_t elem, sllist_id_t i);
+void sllist_add(sllist_t list, sllist_elem_t elem);
+
+// Adds the new element 'elem' to the (start of the) list if it's not already contained
+void sllist_add_unique(sllist_t list, sllist_elem_t elem);
+
+// Removes the element with id 'id' from the list if it exists
+void sllist_remove(sllist_t list, sllist_elem_t id);
+
+// Applies the cb callback to all elements of the list, providing the current node and optional args
+void sllist_map(sllist_t list, void(*cb)(sllist_node_t, void *), void *args);
 
 struct sllist_node{
-    sllist_id_t   id;
     sllist_elem_t elem;
     sllist_node_t next;
 };
