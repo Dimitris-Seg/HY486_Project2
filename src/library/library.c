@@ -34,7 +34,7 @@ mpiproc_t get_neighbor(gridpos_t coords, mpiproc_t proc, int nid){
             proc.id-1:-1 
         };
     case 1: // TOP neighbor
-        return (mpiproc_t){.id=((coords.j+1)/N)<N-1?
+        return (mpiproc_t){.id=(coords.j)<N-1?
             proc.id+N:-1 
         };
     case 2: // RIGHT neighbor
@@ -47,7 +47,6 @@ mpiproc_t get_neighbor(gridpos_t coords, mpiproc_t proc, int nid){
         };
     default:
         // Should never happen unless misused
-        ERROR("Invalid neighbor id '%d'", nid);
         exit(EXIT_FAILURE);
     }
 }
@@ -60,7 +59,7 @@ static bookcost_t random_book_cost(){
 library_t library_init(mpipid_t id, int N){
     library_t lib = {
         .node           = {.id = id, .N = N},
-        .coords         = (gridpos_t){.i = id%N, .j = id/N},
+        .coords         = (gridpos_t){.i = (id-1)%N, .j = (id-1)/N},
         .books          = bookstorage_create(N*N), // Use N*N buckets
         .children       = sllist_create(),
     };
@@ -97,7 +96,7 @@ void library_run(library_t self){
     );
 
     int leader = self.node.id;
-    int parent = -1; // No parent
+    int parent = self.node.id;
     sllist_t unexplored = sllist_create();
     all_neighbors_unexplored(self, unexplored);
 

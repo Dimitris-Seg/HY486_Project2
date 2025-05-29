@@ -95,7 +95,7 @@ int main(int argc, char *argv[]){
 
         coordinator_t coord = coordinator_init(rank, N, instr_file);
         coordinator_run(coord);
-    }else if(rank<N*N){
+    }else if(rank<=N*N){
         // Process simulates a library
         // N^2 total libraries
 
@@ -104,7 +104,7 @@ int main(int argc, char *argv[]){
         INFO("Process %d says: I'm a library!", rank);
         library_t lib = library_init(rank, N);
         library_run(lib);
-    }else if(rank <= N*N+(N*N*N)/2) {
+    }else if(rank <= N*N+(N*N*N)/2+1) {
         // Process simulates a borrower/client
         // floor(N^3)/2. total clients
 
