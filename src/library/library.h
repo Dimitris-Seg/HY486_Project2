@@ -23,6 +23,7 @@
 
 #include "../utils/general.h"
 #include "../utils/storage/bookstorage.h"
+#include "../utils/storage/sllist.h"
 #include "../utils/logging.h"
 //
 
@@ -34,6 +35,8 @@ struct library{
     gridpos_t coords;
 
     mpiproc_t neighbors[4]; // All neighboring mpi processes in the grid (left, top, right, bottom)
+
+    sllist_t children;      // Children in the DFS tree determined by leader election
 
     bookstorage_t books;    // Holds all books in the library with their counts
 };
@@ -48,4 +51,9 @@ mpiproc_t get_neighbor(gridpos_t coords, mpiproc_t sid, int nid);
  * Initializes the library with id 'id', with a total of N processes in the system
  */
 library_t library_init(mpipid_t id, int N);
+
+/**
+ * Listens for events from the coordinator and performs necessary actions
+ */
+void library_run(library_t self);
 #endif

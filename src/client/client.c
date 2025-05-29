@@ -64,7 +64,8 @@ void client_run(client_t self){
 
         DEBUG("Received %s %d %d %d", message_type_to_str(message.type), message.args[0], message.args[1], message.args[2]);
 
-        if(message.type == MT_CONNECT){
+        switch(message.type){
+        case MT_CONNECT:{
             if(source != COORDINATOR_INDEX){ // Non-coordinator sent connect, invalid behaviour
                 ERROR("Received '%s' from process '%d' (only expected from coordinator)", message_type_to_str(message.type), source);
                 exit(EXIT_FAILURE);
@@ -83,7 +84,10 @@ void client_run(client_t self){
             };
 
             MPI_Send(&neighbor, 1, message_datatype, neighbor_id, 0, MPI_COMM_WORLD);
-        }else if(message.type == MT_NEIGHBOR){
+
+            break;
+        }
+        case MT_NEIGHBOR: {
             if(source == COORDINATOR_INDEX){ // The coordinator sent a neighbor request, invalid behaviour
                 ERROR("Received '%s' from coordinator (invalid behaviour)", message_type_to_str(message.type));
                 exit(EXIT_FAILURE);
@@ -100,9 +104,12 @@ void client_run(client_t self){
                 .args = {-1, -1, -1},
             };
 
-            DEBUG("Sending ack back to '%d'", neighbor_id);
+            DEBUG("Sending '%s' to '%d'", message_type_to_str(ack.type), neighbor_id);
             MPI_Send(&ack, 1, message_datatype, neighbor_id, 0, MPI_COMM_WORLD);
-        }else if(message.type == MT_ACK){
+
+            break;
+        }
+        case MT_ACK: {
             if(source == COORDINATOR_INDEX){ // The coordinator sent an ack, invalid behaviour
                 ERROR("Received '%s' from coordinator (invalid behaviour)", message_type_to_str(message.type));
                 exit(EXIT_FAILURE);
@@ -121,7 +128,10 @@ void client_run(client_t self){
             };
 
             MPI_Send(&ack, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
-        }else{
+
+            break;
+        }
+        default:
             ERROR("Unexpected message '%s' received from %d", message_type_to_str(message.type), source);
             exit(EXIT_FAILURE);
         }

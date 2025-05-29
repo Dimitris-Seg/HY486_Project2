@@ -31,7 +31,7 @@ extern bool debugger;       // Regulates which processes are allowed to print (e
 extern string process_name; // The current process name for debugging purposes
 extern int process_id;      // The current process id for debugging purposes
 
-#define ALL_DEBUG       0 // If true all processes can print debug logs
+#define ALL_DEBUG       1 // If true all processes can print debug logs
 #define FAIL_ON_ERROR   0 // The process will automatically fail on the first error if true
 #define FAIL_ON_WARN    0 // The process will automatically fail on the first warning if true
 #define DEBUGGING_ON    1 // Enables debug logs (DEBUG & ERROR)
@@ -89,7 +89,7 @@ extern int process_id;      // The current process id for debugging purposes
 string get_current_date();
 string get_current_time();
 
-#define CUSTOM_LOG(tag, msg, ...) (debugger?printf("[%s]\t%s[%s %s] %s[%-11s:%.2d]:%s " msg "%s\n", tag, TINT_MAG, get_current_date(), get_current_time(), TINT_BLUE, process_name, process_id, TINT_CYAN, ##__VA_ARGS__, TINT_NONE):(void)(0))
+#define CUSTOM_LOG(tag, msg, ...) (debugger?printf("[%s]\t%s[%s %s] %s[%-12s:%2d]:%s " msg "%s\n", tag, TINT_MAG, get_current_date(), get_current_time(), TINT_BLUE, process_name, process_id, TINT_CYAN, ##__VA_ARGS__, TINT_NONE):(void)(0))
 
 #if FAIL_ON_ERROR
     #define ERROR(msg, ...) COLOR_RED, CUSTOM_LOG("ERROR", msg, ##__VA_ARGS__), COLOR_RESET, exit(EXIT_FAILURE)

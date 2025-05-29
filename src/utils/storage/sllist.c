@@ -101,6 +101,30 @@ void sllist_remove(sllist_t list, sllist_elem_t elem){
     // Element not found, ignore
 }
 
+sllist_elem_t sllist_removeOne(sllist_t list){
+    sllist_elem_t ret = -1;
+    if(list->head){
+        ret = list->head->elem;
+        list->head = list->head->next;
+    }
+    return ret;
+}
+
+void sllist_removeAll(sllist_t list){
+    assert(list);
+    
+    sllist_node_t it = list->head;
+    sllist_node_t prev = NULL;
+
+    list->head = NULL;
+
+    while(it){
+        prev = it;
+        it = it->next;
+        free(prev);
+    }
+}
+
 void sllist_map(sllist_t list, void(*cb)(sllist_node_t, void *), void *args){
     assert(list);
 

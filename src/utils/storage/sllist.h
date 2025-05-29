@@ -47,8 +47,14 @@ void sllist_add(sllist_t list, sllist_elem_t elem);
 // Adds the new element 'elem' to the (start of the) list if it's not already contained
 void sllist_add_unique(sllist_t list, sllist_elem_t elem);
 
+// Removes and returns some element from the list or -1 if there's none
+sllist_elem_t sllist_removeOne(sllist_t list);
+
 // Removes the element with id 'id' from the list if it exists
 void sllist_remove(sllist_t list, sllist_elem_t id);
+
+// Removes all elements in the list (empties it)
+void sllist_removeAll(sllist_t list);
 
 // Applies the cb callback to all elements of the list, providing the current node and optional args
 void sllist_map(sllist_t list, void(*cb)(sllist_node_t, void *), void *args);

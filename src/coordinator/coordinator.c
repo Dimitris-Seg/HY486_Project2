@@ -72,7 +72,7 @@ static void coordinator_le_libr(coordinator_t self){
     );
 
     // Broadcast election start to all libraries
-    for(int id=1; id<self.node.N*self.node.N; ++id){ // All library ids
+    for(int id=0; id<self.node.N*self.node.N; ++id){ // All library ids
         MPI_Send(&elect_msg, 1, message_datatype, id, 0, MPI_COMM_WORLD);
         DEBUG("Sent '%s' to %d", message_type_to_str(MT_START_LEADER_ELECTION), id);
     }
@@ -87,10 +87,12 @@ static void coordinator_le_libr(coordinator_t self){
         exit(EXIT_FAILURE);
     }
 
+    
+
     int leader_id = status.MPI_SOURCE;
 
-    DEBUG("Received '%s' from %d", message_type_to_str(response.type), leader_id);
-    DEBUG("Elected library leader is %d", leader_id);
+    DEBUG("Received '%s' from %d", message_type_to_str(response.type), status.MPI_SOURCE);
+    DEBUG("Elected library leader is '%d'", leader_id);
 }
 
 static void coordinator_le_loaners(coordinator_t self){
