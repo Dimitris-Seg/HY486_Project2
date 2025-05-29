@@ -111,3 +111,7 @@ void sllist_map(sllist_t list, void(*cb)(sllist_node_t, void *), void *args){
         it = it->next;
     }
 }
+
+bool sllist_empty(sllist_t list){
+    return (list->head == NULL);
+}

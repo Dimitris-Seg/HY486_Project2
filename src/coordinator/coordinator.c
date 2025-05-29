@@ -19,6 +19,7 @@
  */
 
 #include "coordinator.h"
+#include "../utils/storage/sllist.h"
 #include "../utils/message.h"
 //
 #include <mpi/mpi.h>
@@ -34,7 +35,6 @@ coordinator_t coordinator_init(mpipid_t id, int N, string instr_file){
 }
 
 static void coordinator_connect(coordinator_t self, int src, int target){
-    // Implementation pending...
     message_t message = {
         .type = MT_CONNECT,
         .args = {src, target, -1},
@@ -46,7 +46,7 @@ static void coordinator_connect(coordinator_t self, int src, int target){
     );
 
     MPI_Send(&message, 1, message_datatype, src, 0, MPI_COMM_WORLD);
-    INFO("Sent '%s' to %d", message_type_to_str(MT_CONNECT), src);
+    DEBUG("Sent '%s' to %d", message_type_to_str(MT_CONNECT), src);
 
     message_t response;
 
@@ -56,10 +56,41 @@ static void coordinator_connect(coordinator_t self, int src, int target){
         ERROR("Expected '%s' from node '%d', got '%s'", message_type_to_str(MT_ACK), target, message_type_to_str(response.type));
         exit(EXIT_FAILURE);
     }
+
+    DEBUG("Received '%s' from %d", message_type_to_str(MT_ACK), src);
 }
 
 static void coordinator_le_libr(coordinator_t self){
-    // Implementation pending...
+    message_t elect_msg = {
+        .type = MT_START_LEADER_ELECTION,
+        .args = {-1, -1, -1},
+    };
+
+    MPI_Datatype message_datatype;
+    mpi_create_message_struct(
+        &message_datatype
+    );
+
+    // Broadcast election start to all libraries
+    for(int id=1; id<self.node.N*self.node.N; ++id){ // All library ids
+        MPI_Send(&elect_msg, 1, message_datatype, id, 0, MPI_COMM_WORLD);
+        DEBUG("Sent '%s' to %d", message_type_to_str(MT_START_LEADER_ELECTION), id);
+    }
+
+    // Receive election done from elected process (leader)
+    message_t response;
+    MPI_Status status;
+    MPI_Recv(&response, 1, message_datatype, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+    //
+    if(response.type != MT_LE_LIBR_DONE){ // Enforce strict check if we didn't expect this
+        ERROR("Received rogue '%s' from process '%d'", message_type_to_str(response.type), status.MPI_SOURCE);
+        exit(EXIT_FAILURE);
+    }
+
+    int leader_id = status.MPI_SOURCE;
+
+    DEBUG("Received '%s' from %d", message_type_to_str(response.type), leader_id);
+    DEBUG("Elected library leader is %d", leader_id);
 }
 
 static void coordinator_le_loaners(coordinator_t self){

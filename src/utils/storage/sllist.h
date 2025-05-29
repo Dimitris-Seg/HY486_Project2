@@ -53,6 +53,9 @@ void sllist_remove(sllist_t list, sllist_elem_t id);
 // Applies the cb callback to all elements of the list, providing the current node and optional args
 void sllist_map(sllist_t list, void(*cb)(sllist_node_t, void *), void *args);
 
+// Returns whether the list is empty or not
+bool sllist_empty(sllist_t list);
+
 struct sllist_node{
     sllist_elem_t elem;
     sllist_node_t next;

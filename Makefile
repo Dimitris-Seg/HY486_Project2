@@ -1,6 +1,12 @@
 # Author: 	Dimitris Segkesser
 # Date: 	25/05/2025
 
+EXEC := mpirun
+EXECFLAGS := --oversubscribe
+NP := 23
+N := 3
+INSTR_FILE := "./testfiles_hy486/testfile0/loaners_13_libs_9_np_23.txt"
+
 CC := mpicc
 CFLAGS := -Wall -Wextra -std=c11 -g -MMD -MP
 LDFLAGS :=   # ADD MPI flag here
@@ -35,3 +41,6 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
 # Clean up the build directory
 clean:
 	rm -rf $(BUILD_DIR)
+
+test1: $(TARGET)
+	$(EXEC) $(EXECFLAGS) -np $(NP) $(TARGET) $(INSTR_FILE) $(N)

@@ -21,6 +21,7 @@
 #include "library.h"
 //
 #include <stdlib.h>
+#include <mpi/mpi.h>
 //
 
 mpiproc_t get_neighbor(gridpos_t coords, mpiproc_t proc, int nid){
@@ -75,5 +76,18 @@ library_t library_init(mpipid_t id, int N){
     }
 
     return lib;
+}
+
+void library_run(library_t self){
+    DEBUG("Starting client '%d' execution", self.node.id);
+
+    MPI_Datatype message_datatype;
+    mpi_create_message_struct(
+        &message_datatype
+    );
+
+    while(TRUE){
+        // Add control flow for receiving and making requests
+    }
 }
 
