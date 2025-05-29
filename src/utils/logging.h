@@ -122,14 +122,16 @@ string get_current_time();
 #define PRINTLN(msg, ...) PRINT(msg"\n", ##__VA_ARGS__)
 
 #if WATERMARK_ON
+
 #define PRINT_WATERMARK() if(debugger)printf( \
-    "\n" \
-    "     ===   =====   ===              \n" \
-    "   //      ||      ||  \\\\         \n" \
-    "   ||      =====   ||  ||           \n" \
-    "   \\\\         ||   ||  //         \n" \
-    "     ===   =====   ===              \n" \
-    "\n" \
+"\n"\
+"    _____  _____ _____         \n"\
+"   / ____|/ ____|  __ \\       \n"\
+"  | |    | (___ | |  | |      \n"\
+"  | |     \\___ \\| |  | |    \n"\
+"  | |____ ____) | |__| |      \n"\
+"   \\_____|_____/|_____/       \n"\
+"\n" \
     "(2025) Computer Science Department, University Of Crete \n\n" \
     "Project 2, HY486\n" \
     "Build [%s %s] \n"                                           \

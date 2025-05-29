@@ -4,12 +4,12 @@
 EXEC := mpirun
 EXECFLAGS := --oversubscribe
 NP := 23
-N := 3
+NUM_LIBS := 9
 INSTR_FILE := "./testfiles_hy486/testfile0/loaners_13_libs_9_np_23.txt"
 
 CC := mpicc
 CFLAGS := -Wall -Wextra -std=c11 -g -MMD -MP
-LDFLAGS :=   # ADD MPI flag here
+LDFLAGS := -lm  # ADD MPI flag here
 SRC_DIR := ./src
 BUILD_DIR := ./build
 TARGET := $(BUILD_DIR)/main
@@ -43,4 +43,4 @@ clean:
 	rm -rf $(BUILD_DIR)
 
 test1: $(TARGET)
-	$(EXEC) $(EXECFLAGS) -np $(NP) $(TARGET) $(INSTR_FILE) $(N)
+	$(EXEC) $(EXECFLAGS) -np $(NP) $(TARGET) $(INSTR_FILE) $(NUM_LIBS)

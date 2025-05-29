@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <mpi/mpi.h>
+#include <math.h>
 //
 
 void print_books(bookstorage_node_t node, void *args){
@@ -54,23 +55,29 @@ int main(int argc, char *argv[]){
         PRINT_WATERMARK();
     }
 
-    int N = -1;
+    int NUM_LIBS = -1;
     string instr_file = NULL;
 
     if(argc > 2){
         instr_file = argv[1];
-        N = atoi(argv[2]);
+        NUM_LIBS = atoi(argv[2]);
 
         if(argc>3){
-            WARN("Too many arguments (%d), expected <instruction filename> <N>. Discarding extras.\n", argc-1);
+            WARN("Too many arguments (%d), expected <instruction filename> <NUM_LIBS>. Discarding extras.\n", argc-1);
         }
     }else{
-        ERROR("Invalid usage, expected arguments <instruction filename> <N>, N>0");
+        ERROR("Invalid usage, expected arguments <instruction filename> <NUM_LIBS>, NUM_LIBS>0, valid squared value");
         exit(EXIT_FAILURE);
     }
-    
-    if(N<=0){
-        ERROR("Invalid usage, expected positive int N (size of library grid dimension) as argument 2");
+
+    if(NUM_LIBS<=0){
+        ERROR("Invalid usage, expected positive int NUM_LIBS (number of libraries) as argument 2");
+        exit(EXIT_FAILURE);
+    }
+
+    int N = sqrt(NUM_LIBS);
+    if(N*N != NUM_LIBS){
+        ERROR("<NUM_LIBS> is not a proper squared value");
         exit(EXIT_FAILURE);
     }
 
