@@ -209,19 +209,20 @@ void client_run(client_t self){
 
                     message_t elect_res = {
                         .type = MT_LE_LOANERS_DONE,
-                        .args = {self.node.id, -1, -1},
+                        .args = {-1, -1, -1},
                     };
                 
                     INFO("Sending '%s' to all neighbors", message_type_to_str(elect_done.type));
 
-                    sllist_map(
-                        self.neigbors, 
-                        send_to_neighbor, 
-                        &(mapped_message_t){
-                            .datatype = &message_datatype, 
-                            .message  = &elect_done,
+                    
+                    // Broadcast election start to all other loaners
+                    int start_index = self.node.N*self.node.N+1;
+                    for(int id=start_index; id<start_index+(self.node.N*self.node.N*self.node.N)/2; ++id){ // All loaner ids
+                        if(id!=self.node.id){
+                            MPI_Send(&elect_done, 1, message_datatype, id, 0, MPI_COMM_WORLD);
+                            DEBUG("Sent '%s' to %d", message_type_to_str(elect_done.type), id);
                         }
-                    );
+                    }
 
                     INFO("Sending '%s' to coordinator", message_type_to_str(elect_res.type));
                     MPI_Send(&elect_res, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
@@ -231,28 +232,9 @@ void client_run(client_t self){
             break;
         }
         case MT_LE_LOANERS: {
-            if(!sllist_empty(elects_received)){ // First LE_LOANERS
-                message_t elect_done = {
-                    .type = MT_LE_LOANERS,
-                    .args = {message.args[0], -1, -1},
-                };
-                
-                sllist_remove(elects_received, source);
-
-                // Send to all but the one who sent it to me
-                sllist_map(
-                    elects_received, 
-                    send_to_neighbor, 
-                    &(mapped_message_t){
-                        .datatype = &message_datatype, 
-                        .message  = &elect_done,
-                    }
-                );
-
-                // Reset state
-                sllist_removeAll(elects_received);
-                last_elect_target = -1;
-            }
+            // Reset state
+            sllist_removeAll(elects_received);
+            last_elect_target = -1;
             break;
         }
         default:

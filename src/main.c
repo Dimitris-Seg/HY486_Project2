@@ -91,7 +91,7 @@ int main(int argc, char *argv[]){
 
         PRINT_LOG_HELPER();
 
-        INFO("Process %d says: I'm a coordinator!", rank);
+        DEBUG("Hello!");
 
         coordinator_t coord = coordinator_init(rank, N, instr_file);
         coordinator_run(coord);
@@ -101,7 +101,8 @@ int main(int argc, char *argv[]){
 
         SET_PROCESS_NAME("Library"); // For debugging
 
-        INFO("Process %d says: I'm a library!", rank);
+        DEBUG("Hello!");
+
         library_t lib = library_init(rank, N);
         library_run(lib);
     }else if(rank <= N*N+(N*N*N)/2+1) {
@@ -110,7 +111,7 @@ int main(int argc, char *argv[]){
 
         SET_PROCESS_NAME("Loaner"); // For debugging
 
-        INFO("Process %d says: I'm a client!", rank);
+        DEBUG("Hello!");
 
         client_t client = client_init(rank, N);
         client_run(client);
