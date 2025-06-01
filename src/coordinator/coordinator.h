@@ -36,6 +36,7 @@ typedef struct coordinator coordinator_t;
 struct coordinator {
     mpiproc_t node;
     mpiproc_t lib_leader;
+    mpiproc_t loaner_leader;
     tokenlist_t instructions;
 };
 

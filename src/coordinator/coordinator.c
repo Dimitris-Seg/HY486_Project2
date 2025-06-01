@@ -97,7 +97,39 @@ static void coordinator_le_libr(coordinator_t self){
 }
 
 static void coordinator_le_loaners(coordinator_t self){
-    // Implementation pending...
+    message_t elect_msg = {
+        .type = MT_START_LE_LOANERS,
+        .args = {-1, -1, -1},
+    };
+
+    MPI_Datatype message_datatype;
+    mpi_create_message_struct(
+        &message_datatype
+    );
+
+    // Broadcast election start to all libraries
+    int start_index = self.node.N*self.node.N+1;
+    for(int id=start_index; id<start_index+(self.node.N*self.node.N*self.node.N)/2; ++id){ // All library ids
+        MPI_Send(&elect_msg, 1, message_datatype, id, 0, MPI_COMM_WORLD);
+        DEBUG("Sent '%s' to %d", message_type_to_str(MT_START_LEADER_ELECTION), id);
+    }
+
+    // Receive election done from elected process (leader)
+    message_t response;
+    MPI_Status status;
+    MPI_Recv(&response, 1, message_datatype, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+    //
+    if(response.type != MT_LE_LOANERS_DONE){ // Enforce strict check if we didn't expect this
+        ERROR("Received rogue '%s' from process '%d'", message_type_to_str(response.type), status.MPI_SOURCE);
+        exit(EXIT_FAILURE);
+    }
+
+    int leader_id = status.MPI_SOURCE;
+
+    DEBUG("Received '%s' from %d", message_type_to_str(response.type), status.MPI_SOURCE);
+    DEBUG("Elected loaner leader is '%d'", leader_id);
+
+    self.loaner_leader.id = leader_id;
 }
 
 static void coordinator_take_book(coordinator_t self, int c_id, int b_id){

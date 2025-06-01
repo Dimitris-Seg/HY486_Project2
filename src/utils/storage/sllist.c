@@ -27,6 +27,7 @@
 sllist_t sllist_create(){
     sllist_t list = safe_malloc(sizeof(struct sllist));
     list->head = NULL;
+    list->len = 0;
 
     return list;
 }
@@ -76,6 +77,7 @@ void sllist_add(sllist_t list, sllist_elem_t elem){
     node->elem = elem;
     node->next = list->head;
     list->head = node;
+    ++list->len;
 }
 
 void sllist_remove(sllist_t list, sllist_elem_t elem){
@@ -89,6 +91,7 @@ void sllist_remove(sllist_t list, sllist_elem_t elem){
             // Found
             if(prev){
                 prev->next = it->next;
+                --list->len;
                 free(it);
             }else{
                 list->head = it->next;
@@ -105,7 +108,10 @@ sllist_elem_t sllist_removeOne(sllist_t list){
     sllist_elem_t ret = -1;
     if(list->head){
         ret = list->head->elem;
+        sllist_node_t rem = list->head;
         list->head = list->head->next;
+        free(rem);
+        --list->len;
     }
     return ret;
 }
@@ -121,6 +127,7 @@ void sllist_removeAll(sllist_t list){
     while(it){
         prev = it;
         it = it->next;
+        --list->len;
         free(prev);
     }
 }
@@ -137,5 +144,11 @@ void sllist_map(sllist_t list, void(*cb)(sllist_node_t, void *), void *args){
 }
 
 bool sllist_empty(sllist_t list){
+    assert(list);
     return (list->head == NULL);
+}
+
+size_t sllist_length(sllist_t list){
+    assert(list);
+    return list->len;
 }

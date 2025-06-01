@@ -23,7 +23,7 @@
 #include "../utils/message.h"
 #include "../utils/logging.h"
 //
-#include <mpi/mpi.h>
+#include <assert.h>
 //
 
 client_t client_init(mpipid_t id, int N){
@@ -42,6 +42,16 @@ void print_neighbor(sllist_node_t node, void *ignored){
     DEBUG("'%d' is a neighbor", node->elem);
 }
 
+void send_to_neighbor(sllist_node_t node, void *datatype){
+    assert(node && datatype);
+    
+    mapped_message_t data = *((mapped_message_t*)datatype);
+    MPI_Datatype message_datatype = *(data.datatype);
+    message_t message = *(data.message);
+
+    MPI_Send(&message, 1, message_datatype, node->elem, 0, MPI_COMM_WORLD);
+}
+
 void client_run(client_t self){
     DEBUG("Starting client '%d' execution", self.node.id);
 
@@ -50,7 +60,9 @@ void client_run(client_t self){
         &message_datatype
     );
 
-    sllist_t pending_acks = sllist_create(); // Contains all pending acks
+    sllist_t pending_acks       = sllist_create(); // Contains all pending acks
+    sllist_t elects_received    = sllist_create(); // Contains all received 'elect' messages from neighbors
+    mpipid_t last_elect_target  = -1;              // Contains the recipient of the last sent 'elect'
 
     // Until termination signal
     while(TRUE){
@@ -124,11 +136,123 @@ void client_run(client_t self){
 
             message_t ack = {
                 .type = MT_ACK,
-                .args = {0, 0, 0},
+                .args = {-1, -1, -1},
             };
 
             MPI_Send(&ack, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
 
+            break;
+        }
+        case MT_START_LE_LOANERS: {
+            if(source != COORDINATOR_INDEX){ // Non-coordinator sent LE start, invalid behaviour
+                ERROR("Received '%s' from process '%d' (only expected from coordinator)", message_type_to_str(message.type), source);
+                exit(EXIT_FAILURE);
+            }
+
+            if(sllist_length(self.neigbors) == 1){
+                // Leaf node, start convergecast
+
+                message_t elect = {
+                    .type = MT_ELECT,
+                    .args = {-1, -1, -1},
+                };
+                sllist_map(
+                    self.neigbors, 
+                    send_to_neighbor, 
+                    &(mapped_message_t){
+                        .datatype = &message_datatype, 
+                        .message  = &elect,
+                    }
+                );
+            }
+            
+            break;
+        }
+        case MT_ELECT: { // TODO: Pick up where you left off, second case in the algorithm termination, this is not done yet
+            if(sllist_search(elects_received, source)){
+                ERROR("Received duplicate '%s' from process '%d'", message_type_to_str(message.type), source);
+                exit(EXIT_FAILURE);
+            }
+
+            sllist_add(elects_received, source);
+
+            if(sllist_length(self.neigbors) - sllist_length(elects_received) == 1){
+                // Send elect to only non-elected neighbor
+            
+                // Here we find the only pending neighbor
+                sllist_node_t it = self.neigbors->head;
+                while(it){
+                    if(!sllist_search(elects_received, it->elem)){
+                        // This is the only pending neighbor
+                        message_t elect = {
+                            .type = MT_ELECT,
+                            .args = {-1, -1, -1},
+                        };
+                    
+                        DEBUG("Sending '%s' to '%d'", message_type_to_str(elect.type), it->elem);
+                        MPI_Send(&elect, 1, message_datatype, it->elem, 0, MPI_COMM_WORLD);
+
+                        last_elect_target = it->elem;
+
+                        break;
+                    }
+                    it = it->next;
+                }
+            }else if(last_elect_target == source){
+                // 'Elect' messages sent by both processes to eachother, resolve winner on rank
+
+                if(self.node.id > source){ // I'm the winner
+                    message_t elect_done = {
+                        .type = MT_LE_LOANERS,
+                        .args = {self.node.id, -1, -1},
+                    };
+
+                    message_t elect_res = {
+                        .type = MT_LE_LOANERS_DONE,
+                        .args = {self.node.id, -1, -1},
+                    };
+                
+                    INFO("Sending '%s' to all neighbors", message_type_to_str(elect_done.type));
+
+                    sllist_map(
+                        self.neigbors, 
+                        send_to_neighbor, 
+                        &(mapped_message_t){
+                            .datatype = &message_datatype, 
+                            .message  = &elect_done,
+                        }
+                    );
+
+                    INFO("Sending '%s' to coordinator", message_type_to_str(elect_res.type));
+                    MPI_Send(&elect_res, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
+                }
+            }
+
+            break;
+        }
+        case MT_LE_LOANERS: {
+            if(!sllist_empty(elects_received)){ // First LE_LOANERS
+                message_t elect_done = {
+                    .type = MT_LE_LOANERS,
+                    .args = {message.args[0], -1, -1},
+                };
+                
+                sllist_remove(elects_received, source);
+
+                // Send to all but the one who sent it to me
+                sllist_map(
+                    elects_received, 
+                    send_to_neighbor, 
+                    &(mapped_message_t){
+                        .datatype = &message_datatype, 
+                        .message  = &elect_done,
+                    }
+                );
+
+                // Reset state
+                sllist_removeAll(elects_received);
+                last_elect_target = -1;
+            }
             break;
         }
         default:

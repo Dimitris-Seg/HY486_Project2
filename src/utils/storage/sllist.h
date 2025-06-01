@@ -62,6 +62,9 @@ void sllist_map(sllist_t list, void(*cb)(sllist_node_t, void *), void *args);
 // Returns whether the list is empty or not
 bool sllist_empty(sllist_t list);
 
+// Returns the length of the list
+size_t sllist_length(sllist_t list);
+
 struct sllist_node{
     sllist_elem_t elem;
     sllist_node_t next;
@@ -72,6 +75,7 @@ struct sllist_node{
  */
 struct sllist{
     sllist_node_t head;
+    size_t len;         // Keeps track of the list's length
 };
 
 

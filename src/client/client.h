@@ -24,8 +24,13 @@
 #include "../utils/general.h"
 #include "../utils/storage/bookstorage.h"
 #include "../utils/storage/sllist.h"
+#include "../utils/message.h"
+//
+#include <mpi/mpi.h>
+//
 
-typedef struct client client_t;
+typedef struct client           client_t;
+typedef struct mapped_message   mapped_message_t;
 
 struct client{
     mpiproc_t node;
@@ -33,6 +38,11 @@ struct client{
     bookstorage_t books;    // Holds all books the client has under posession/borrowed
 
     sllist_t neigbors;  // All books that were in 'self' at some point
+};
+
+struct mapped_message{
+    MPI_Datatype*   datatype;
+    message_t*      message;
 };
 
 /**
