@@ -42,6 +42,17 @@ void print_neighbor(sllist_node_t node, void *ignored){
     DEBUG("'%d' is a neighbor", node->elem);
 }
 
+static inline int myceil(double num){
+    return (num==(int)num)?num:num+1;
+}
+
+// Dynamically compute the client's corresponding library
+static mpipid_t mylib(client_t self){
+    
+    mpipid_t nsq = self.node.N*self.node.N;
+    return 2*(self.node.id-nsq)/((nsq*self.node.N)/(double)nsq)+1;
+}
+
 void send_to_neighbor(sllist_node_t node, void *datatype){
     assert(node && datatype);
     
@@ -61,6 +72,7 @@ void client_run(client_t self){
     );
 
     sllist_t pending_acks       = sllist_create(); // Contains all pending acks
+    sllist_t pending_takes      = sllist_create(); // Contains all pending take book requests
     sllist_t elects_received    = sllist_create(); // Contains all received 'elect' messages from neighbors
     mpipid_t last_elect_target  = -1;              // Contains the recipient of the last sent 'elect'
 
@@ -168,7 +180,7 @@ void client_run(client_t self){
             
             break;
         }
-        case MT_ELECT: { // TODO: Pick up where you left off, second case in the algorithm termination, this is not done yet
+        case MT_ELECT: {
             if(sllist_search(elects_received, source)){
                 ERROR("Received duplicate '%s' from process '%d'", message_type_to_str(message.type), source);
                 exit(EXIT_FAILURE);
@@ -235,6 +247,48 @@ void client_run(client_t self){
             // Reset state
             sllist_removeAll(elects_received);
             last_elect_target = -1;
+            break;
+        }
+        case MT_TAKE_BOOK: {
+
+            bookid_t b_id = message.args[0];
+            mpipid_t l_id = mylib(self);
+
+            message_t lend = {
+                .type = MT_LEND_BOOK,
+                .args = {b_id, -1, -1},
+            };
+
+            sllist_add(pending_takes, l_id);
+        
+            DEBUG("Sending '%s' to '%d'", message_type_to_str(lend.type), l_id);
+            MPI_Send(&lend, 1, message_datatype, l_id, 0, MPI_COMM_WORLD);
+
+            break;
+        }
+        case MT_ACK_TB  : // Cascade
+        case MT_GET_BOOK: {
+
+            bookid_t b_id   = message.args[0];
+
+            if(!sllist_search(pending_takes, source)){
+                ERROR("Received rogue '%s' from '%d'", message_type_to_str(message.type), source);
+                exit(EXIT_FAILURE);
+            }
+
+            sllist_remove(pending_takes, source); // Consume pending take
+
+            bookstorage_store(self.books, (book_t){.id = b_id}); // We don't care about the cost (for now)
+
+            message_t done = {
+                .type = MT_DONE_FIND_BOOK,
+                .args = {-1, -1, -1},
+            };
+        
+            DEBUG("Sending '%s' to '%d'", message_type_to_str(done.type), COORDINATOR_INDEX);
+            MPI_Send(&done, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
+            
+            // TODO: Maybe update statistics?
             break;
         }
         default:

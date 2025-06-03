@@ -100,7 +100,7 @@ book_lookup_t bookstorage_take(bookstorage_t storage, bookid_t id){
     bookstorage_node_t it = bookstorage_find(storage, id); // Check if it exists
 
     if(it){
-        if(it->count>1){ // If there's multiple copies, we don't need to remove the node entirely
+        if(it->count>0){
             --it->count;
             return (book_lookup_t){.book = it->book, .successful = TRUE};
         }

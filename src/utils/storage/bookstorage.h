@@ -18,8 +18,8 @@
  *      \___|___/|___/  
  */
 
-#ifndef STORAGE_H
-#define STORAGE_H
+#ifndef BOOKSTORAGE_H
+#define BOOKSTORAGE_H
 
 #include "../book.h"
 #include "../general.h"

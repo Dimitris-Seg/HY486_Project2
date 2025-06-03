@@ -24,6 +24,7 @@
 #include "../utils/general.h"
 #include "../utils/storage/bookstorage.h"
 #include "../utils/storage/sllist.h"
+#include "../utils/storage/libdict.h"
 #include "../utils/logging.h"
 //
 
@@ -32,13 +33,20 @@ typedef struct library library_t;
 struct library{
     mpiproc_t node;
 
-    gridpos_t coords;
+    mpipid_t  leader;               // The elected library leader
 
-    mpiproc_t neighbors[4]; // All neighboring mpi processes in the grid (left, top, right, bottom)
+    gridpos_t coords;               // The coordinates of self in the library grid
 
-    sllist_t children;      // Children in the DFS tree determined by leader election
+    mpiproc_t neighbors[4];         // All neighboring mpi processes in the grid (left, top, right, bottom)
 
-    bookstorage_t books;    // Holds all books in the library with their counts
+    sllist_t children;              // Children in the DFS tree determined by leader election
+
+    bookstorage_t books;            // Holds all books in the library with their counts
+
+    mpipid_t *book_locations;       // Holds the library ids for every fixed book id (at index id)
+
+    libdict_t donated_locations;   // Holds the library locations of donated books
+    
 };
 
 /**

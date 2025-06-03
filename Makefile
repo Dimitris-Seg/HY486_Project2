@@ -3,9 +3,19 @@
 
 EXEC := mpirun
 EXECFLAGS := --oversubscribe
-NP := 23
-NUM_LIBS := 9
-INSTR_FILE := "./testfiles_hy486/testfile0/loaners_13_libs_9_np_23.txt"
+
+NP0 := 23
+NUM_LIBS0 := 9
+#
+NP1 := 49
+NUM_LIBS1 := 16
+#
+NP2 := 88
+NUM_LIBS2 := 25
+
+INSTR_FILE0 := "./testfiles_hy486/testfile0/loaners_13_libs_9_np_23.txt"
+INSTR_FILE1 := "./testfiles_hy486/testfile1/loaners_32_libs_16_np_49.txt"
+INSTR_FILE2 := "./testfiles_hy486/testfile2/loaners_62_libs_25_np_88.txt"
 
 CC := mpicc
 CFLAGS := -Wall -Wextra -std=c11 -g -MMD -MP
@@ -42,5 +52,11 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
 clean:
 	rm -rf $(BUILD_DIR)
 
+test0: $(TARGET)
+	$(EXEC) $(EXECFLAGS) -np $(NP0) $(TARGET) $(INSTR_FILE0) $(NUM_LIBS0)
+
 test1: $(TARGET)
-	$(EXEC) $(EXECFLAGS) -np $(NP) $(TARGET) $(INSTR_FILE) $(NUM_LIBS)
+	$(EXEC) $(EXECFLAGS) -np $(NP1) $(TARGET) $(INSTR_FILE1) $(NUM_LIBS1)	
+
+test2: $(TARGET)
+	$(EXEC) $(EXECFLAGS) -np $(NP2) $(TARGET) $(INSTR_FILE2) $(NUM_LIBS2)	

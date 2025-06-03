@@ -53,7 +53,7 @@ static token_t to_token(string buff){
         }
 
         token.type = TT_INT;
-        token.val = int_trial + 1;
+        token.val = int_trial;
     }
 
     return token;
