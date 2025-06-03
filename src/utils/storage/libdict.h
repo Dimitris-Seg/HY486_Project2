@@ -53,14 +53,24 @@ struct libdict_lookup{
 libdict_t libdict_create(size_t size);
 
 /**
- * Finds a book with a certain bookid in the storage and returns a pointer to its node, or NULL if not found
+ * Finds a book with a certain bookid in the storage and returns its corresponding library, or -1 if not found
  */
 mpipid_t libdict_find(libdict_t storage, bookid_t id);
+
+/**
+ * Finds a book with a certain bookid in a certain library and returns a pointer to its node, or NULL if not found
+ */
+libdict_node_t libdict_find_strict(libdict_t storage, bookid_t id, mpipid_t lib);
 
 /**
  * Stores the book-library correspondance in storage
  */
 void libdict_store(libdict_t storage, book_t book, mpipid_t lib);
+
+/**
+ * Stores 'count' copies of the book in storage
+ */
+void libdict_mass_store(libdict_t storage, book_t book, mpipid_t lib, size_t count);
 
 /**
  * Removes a book with the specified id from the storage of a library and returns it if available

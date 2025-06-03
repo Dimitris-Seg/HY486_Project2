@@ -86,7 +86,7 @@ void bookstorage_mass_store(bookstorage_t storage, book_t book, size_t count){
         it->count+=count; 
     }else{
         // If it's a new book we must insert it in the structure anew
-        bookstorage_node_t node = safe_malloc(sizeof(struct bookstorage));
+        bookstorage_node_t node = safe_malloc(sizeof(struct bookstorage_node));
         node->book = book;
         node->count = count;
         node->next = storage->cells[hash_bookid(book.id, storage->size)];

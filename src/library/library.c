@@ -94,16 +94,25 @@ void all_neighbors_unexplored(library_t self, sllist_t unexplored)
 
 void print_book(bookstorage_node_t node, void *ignore){
     (void)ignore;
-    DEBUG("Book: %d (x%d)", node->book.id, node->count);
+    DEBUG("Book: %d (x%lu)", node->book.id, node->count);
 }
 
+void print_book_location(libdict_node_t node, void *ignore){
+    (void)ignore;
+    DEBUG("Location: %d at %d (x%lu)", node->book.id, node->lib, node->count);
+}
 
+// TODO: Find how to fix books not found after donate, probably snatched from some other process? IDK,
+//  maybe they need to retry on fail, or be able to query the remaining books or something
+
+// Finds a library location, but also removes a donated entry if found
 static mpipid_t get_library_location(library_t self, bookid_t b_id){
 
     // First, check the donated books
     mpipid_t lib = libdict_find(self.donated_locations, b_id);
 
     if(lib != -1){
+        libdict_take(self.donated_locations, b_id, lib);
         return lib; // Found in donated books
     }else if (b_id <= self.node.N * self.node.N * self.node.N){ // N^3
         return self.book_locations[b_id-1]; // Refer to original book
@@ -265,10 +274,10 @@ void library_run(library_t self)
             bookid_t b_count  = message.args[1];
             mpipid_t l_id     = message.args[2];
 
-            libdict_node_t entry = libdict_find_strict(self.donated_locations, b_id, l_id);
-            if(entry){
-                entry->count = b_count;
-            }
+            libdict_mass_store(self.donated_locations, (book_t){.id = b_id}, l_id, b_count);
+
+            DEBUG("Leader updated their books, we have:");
+            libdict_map(self.donated_locations, print_book_location, NULL); // TODO: REMOVE TEST ONLY
 
             message_t ack = {
                 .type = MT_ACK_UD,
@@ -301,7 +310,7 @@ void library_run(library_t self)
                     MPI_Recv(&ack, 1, message_datatype, self.leader, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
                     if(ack.type != MT_ACK_UD){
-                        ERROR("Rogue '%s' received from leader, expected donation update ack");
+                        ERROR("Rogue '%s' received from leader, expected donation update ack", message_type_to_str(ack.type));
                         exit(EXIT_FAILURE);
                     }
                 }
@@ -348,6 +357,8 @@ void library_run(library_t self)
 
             book_lookup_t res = bookstorage_take(self.books, b_id);
 
+            bookstorage_map(self.books, print_book, NULL); // TODO: REMOVE TEST ONLY
+
             if(!res.successful){
                 ERROR("I don't have any remaining books with id '%d'", b_id);
                 exit(EXIT_FAILURE);
@@ -358,6 +369,45 @@ void library_run(library_t self)
                 .args = {b_id, c_id, entry->count},
             };
 
+            MPI_Send(&ack, 1, message_datatype, source, 0, MPI_COMM_WORLD);
+
+            break;
+        }
+        case MT_STORE_BOOK: {
+            bookid_t b_id = message.args[0];
+
+            bookstorage_store(self.books, (book_t){.id = b_id});
+
+            bookstorage_node_t entry = bookstorage_find(self.books, b_id);
+            if(!entry){
+                ERROR("Fatal error, no element in bookstorage for added entry");
+                exit(EXIT_FAILURE);
+            }
+
+            DEBUG("I have '%d' copies of '%d'", entry->count, b_id);
+
+            if(self.node.id != self.leader){
+                size_t count = entry->count;
+                message_t update = {
+                    .type = MT_UPD_DONATED,
+                    .args = {b_id, count, self.node.id},
+                };
+                MPI_Send(&update, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
+
+                message_t ack_upd;
+                MPI_Recv(&ack_upd, 1, message_datatype, self.leader, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+                if(ack_upd.type != MT_ACK_UD){
+                    ERROR("Rogue '%s' received from leader, expected donation update ack", message_type_to_str(ack_upd.type));
+                    exit(EXIT_FAILURE);
+                }
+            }
+
+            message_t ack = {
+                .type = MT_ACK_DB,
+                .args = {-1, -1, -1},
+            };
+            
             MPI_Send(&ack, 1, message_datatype, source, 0, MPI_COMM_WORLD);
 
             break;

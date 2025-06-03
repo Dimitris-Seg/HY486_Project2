@@ -157,7 +157,30 @@ static void coordinator_take_book(coordinator_t self, int c_id, int b_id){
 }
 
 static void coordinator_donate_book(coordinator_t self, int c_id, int b_id, int count){
-    // Implementation pending...
+    message_t donate_msg = {
+        .type = MT_NOTIFY_DONATE_BOOK,
+        .args = {c_id, b_id, count},
+    };
+
+    MPI_Datatype message_datatype;
+    mpi_create_message_struct(
+        &message_datatype
+    );
+
+    MPI_Send(&donate_msg, 1, message_datatype, c_id, 0, MPI_COMM_WORLD);
+    DEBUG("Sent '%s' to %d", message_type_to_str(donate_msg.type), c_id);
+
+    DEBUG("RECEIVING RESPONSE NOTIFY! (%d)", c_id);
+
+    message_t response;
+    MPI_Recv(&response, 1, message_datatype, c_id, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+    DEBUG("RECEIVED RESPONSE NOTIFY!");
+
+    if(response.type != MT_NOTIFY_DONATE_DONE){
+        ERROR("Received rogue '%s' from process '%d'", message_type_to_str(response.type), c_id);
+        exit(EXIT_FAILURE);
+    }
 }
 
 static void coordinator_get_most_popular_book(coordinator_t self){
@@ -193,17 +216,17 @@ void coordinator_run(coordinator_t self){
             ENFORCE_ARG_TYPE(node_src.type, TT_INT, token.type);
             ENFORCE_ARG_TYPE(node_tgt.type, TT_INT, token.type);
 
-            DEBUG("CONNECT(%d, %d)", node_src.val+1, node_tgt.val+1);
+            INFO("CONNECT(%d, %d)", node_src.val+1, node_tgt.val+1);
             coordinator_connect(self, node_src.val+1, node_tgt.val+1);
             break;
         }
         case TT_START_LE_LIBR:{          // no args
-            DEBUG("TT_START_LE_LIBR()");
+            INFO("TT_START_LE_LIBR()");
             coordinator_le_libr(self);
             break;
         }
         case TT_START_LE_LOANERS:{       // no args
-            DEBUG("TT_START_LE_LOANERS()");
+            INFO("TT_START_LE_LOANERS()");
             coordinator_le_loaners(self);
             break;
         }
@@ -214,7 +237,7 @@ void coordinator_run(coordinator_t self){
             ENFORCE_ARG_TYPE(node_who.type, TT_INT, token.type);
             ENFORCE_ARG_TYPE(node_which.type, TT_INT, token.type);
 
-            DEBUG("TT_TAKE_BOOK(%d, %d)", node_who.val+1, node_which.val);
+            INFO("TT_TAKE_BOOK(%d, %d)", node_who.val+1, node_which.val);
             coordinator_take_book(self, node_who.val+1, node_which.val);
             break;
         }
@@ -227,17 +250,17 @@ void coordinator_run(coordinator_t self){
             ENFORCE_ARG_TYPE(node_which.type, TT_INT, token.type);
             ENFORCE_ARG_TYPE(node_count.type, TT_INT, token.type);
 
-            DEBUG("TT_DONATE_BOOK(%d, %d, %d)", node_who.val+1, node_which.val, node_count.val);
+            INFO("TT_DONATE_BOOK(%d, %d, %d)", node_who.val+1, node_which.val, node_count.val);
             coordinator_donate_book(self, node_who.val+1, node_which.val, node_count.val);
             break;
         }
         case TT_GET_MOST_POPULAR_BOOK:{  // no args
-            DEBUG("TT_GET_MOST_POPULAR_BOOK()");
+            INFO("TT_GET_MOST_POPULAR_BOOK()");
             coordinator_get_most_popular_book(self);
             break;
         }
         case TT_CHECK_NUM_BOOKS_LOANED:{ // no args
-            DEBUG("TT_CHECK_NUM_BOOKS_LOANED()");
+            INFO("TT_CHECK_NUM_BOOKS_LOANED()");
             coordinator_check_num_books_loaned(self);
             break;
         }

@@ -35,9 +35,13 @@ typedef struct mapped_message   mapped_message_t;
 struct client{
     mpiproc_t node;
 
+    mpipid_t leader;        // The elected leader process (among the clients/borrowers)
+
+    mpipid_t donate_next;   // Next library to receive a donated book (works round-robin)
+
     bookstorage_t books;    // Holds all books the client has under posession/borrowed
 
-    sllist_t neigbors;  // All books that were in 'self' at some point
+    sllist_t neigbors;      // All books that were in 'self' at some point
 };
 
 struct mapped_message{

@@ -28,9 +28,11 @@
 
 client_t client_init(mpipid_t id, int N){
     client_t client = {
-        .node     = {.id = id, .N = N},
-        .neigbors = sllist_create(),
-        .books    = bookstorage_create(N*N), // Use N*N buckets
+        .node           = {.id = id, .N = N},
+        .leader         = -1,
+        .donate_next    = 0, // First library in order (only used by the elected leader)
+        .neigbors       = sllist_create(),
+        .books          = bookstorage_create(N*N), // Use N*N buckets
     };
 
     return client;
@@ -40,10 +42,6 @@ void print_neighbor(sllist_node_t node, void *ignored){
     (void)ignored; // Ignore waring
 
     DEBUG("'%d' is a neighbor", node->elem);
-}
-
-static inline int myceil(double num){
-    return (num==(int)num)?num:num+1;
 }
 
 // Dynamically compute the client's corresponding library
@@ -188,7 +186,9 @@ void client_run(client_t self){
 
             sllist_add(elects_received, source);
 
-            if(sllist_length(self.neigbors) - sllist_length(elects_received) == 1){
+            size_t pending_neighbors = sllist_length(self.neigbors) - sllist_length(elects_received);
+
+            if(pending_neighbors == 1){
                 // Send elect to only non-elected neighbor
             
                 // Here we find the only pending neighbor
@@ -210,10 +210,12 @@ void client_run(client_t self){
                     }
                     it = it->next;
                 }
-            }else if(last_elect_target == source){
-                // 'Elect' messages sent by both processes to eachother, resolve winner on rank
+            }else{
+                // Case 1: 'Elect' messages sent by both processes to eachother, resolve winner on rank
+                // Case 2: I'm the last process to receive all elects, I'm definitely the winner
+                if((last_elect_target == source && self.node.id > source)||(pending_neighbors==0 && last_elect_target == -1)){ 
+                    // I'm the winner
 
-                if(self.node.id > source){ // I'm the winner
                     message_t elect_done = {
                         .type = MT_LE_LOANERS,
                         .args = {self.node.id, -1, -1},
@@ -223,10 +225,11 @@ void client_run(client_t self){
                         .type = MT_LE_LOANERS_DONE,
                         .args = {-1, -1, -1},
                     };
-                
+
+                    self.leader = self.node.id; // Update local leader field
+
                     INFO("Sending '%s' to all neighbors", message_type_to_str(elect_done.type));
 
-                    
                     // Broadcast election start to all other loaners
                     int start_index = self.node.N*self.node.N+1;
                     for(int id=start_index; id<start_index+(self.node.N*self.node.N*self.node.N)/2; ++id){ // All loaner ids
@@ -247,6 +250,7 @@ void client_run(client_t self){
             // Reset state
             sllist_removeAll(elects_received);
             last_elect_target = -1;
+            self.leader = source; // Update local leader field
             break;
         }
         case MT_TAKE_BOOK: {
@@ -256,7 +260,7 @@ void client_run(client_t self){
 
             message_t lend = {
                 .type = MT_LEND_BOOK,
-                .args = {b_id, -1, -1},
+                .args = {b_id, self.node.id, -1},
             };
 
             sllist_add(pending_takes, l_id);
@@ -287,8 +291,86 @@ void client_run(client_t self){
         
             DEBUG("Sending '%s' to '%d'", message_type_to_str(done.type), COORDINATOR_INDEX);
             MPI_Send(&done, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
+            break;
+        }
+        case MT_NOTIFY_DONATE_BOOK: {
+            if(self.leader == -1){
+                ERROR("Unspecified Client/Borrower leader, ensure leader election before any donate events");
+                exit(EXIT_FAILURE);
+            }
             
-            // TODO: Maybe update statistics?
+            bookid_t b_id = message.args[1];
+            size_t copies = message.args[2];
+
+            message_t donate = {
+                .type = MT_DONATE_BOOK,
+                .args = {b_id, copies, -1},
+            };
+        
+            DEBUG("Sending '%s' to '%d'", message_type_to_str(donate.type), self.leader);
+            MPI_Send(&donate, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
+            break;
+        }
+        case MT_DONATE_BOOK: {
+            if(self.node.id != self.leader){
+                ERROR("Non-leader received leader-only event '%s' from '%d'", message_type_to_str(message.type), source);
+                exit(EXIT_FAILURE);
+            }
+
+            bookid_t b_id = message.args[0];
+            size_t copies = message.args[1];
+
+            message_t donate = {
+                .type = MT_STORE_BOOK,
+                .args = {b_id, -1, -1},
+            };
+
+            for(size_t copy = 0; copy < copies; ++copy){
+                mpipid_t lib = (self.donate_next++)%(self.node.N*self.node.N) + 1; // donate_next/(N^2)
+                DEBUG("Sending '%s' to '%d'", message_type_to_str(donate.type), lib);
+                MPI_Send(&donate, 1, message_datatype, lib, 0, MPI_COMM_WORLD);
+
+                message_t ack;
+                MPI_Recv(&ack, 1, message_datatype, lib, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+                if(ack.type != MT_ACK_DB){
+                    ERROR("Rogue '%s' from '%d'",message_type_to_str(ack.type), lib);
+                    exit(EXIT_FAILURE);
+                }
+            }
+
+            message_t done;
+            mpipid_t target;
+            
+            // If I'm the leader already send this back to the coordinator right away
+            if(source == self.node.id){
+                done = (message_t){
+                    .type = MT_NOTIFY_DONATE_DONE,
+                    .args = {-1, -1, -1},
+                };
+
+                target = COORDINATOR_INDEX;
+            }else{
+                done = (message_t){
+                    .type = MT_DONATE_DONE,
+                    .args = {-1, -1, -1},
+                };
+
+                target = source;
+            }
+
+            MPI_Send(&done, 1, message_datatype, target, 0, MPI_COMM_WORLD);
+
+            break;
+        }
+        case MT_DONATE_DONE: {
+            message_t done = {
+                .type = MT_NOTIFY_DONATE_DONE,
+                .args = {-1, -1, -1},
+            };
+
+            MPI_Send(&done, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
+
             break;
         }
         default:

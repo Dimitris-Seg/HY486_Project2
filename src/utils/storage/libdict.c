@@ -88,19 +88,21 @@ libdict_node_t libdict_find_strict(libdict_t storage, bookid_t id, mpipid_t lib)
 }
 
 void libdict_store(libdict_t storage, book_t book, mpipid_t lib){
-    assert(storage);
-    
-    libdict_node_t it = libdict_find_strict(storage, book.id, lib); // Check if it's already there
+    bookstorage_mass_store(storage, book, lib, 1);
+}
 
+void libdict_mass_store(libdict_t storage, book_t book, mpipid_t lib, size_t count){
+    assert(storage);
+    libdict_node_t it = libdict_find_strict(storage, book.id, lib); // Check if it's already there
     if(it){
         // If it's already contained simply increase its counter
-        ++it->count; 
+        it->count+=count; 
     }else{
         // If it's a new book we must insert it in the structure anew
-        libdict_node_t node = safe_malloc(sizeof(struct libdict));
+        libdict_node_t node = safe_malloc(sizeof(struct libdict_node));
         node->book = book;
-        node->lib  = lib;
-        node->count = 1;
+        node->lib = lib;
+        node->count = count;
         node->next = storage->cells[hash_bookid(book.id, storage->size)];
         storage->cells[hash_bookid(book.id, storage->size)] = node;
     }
