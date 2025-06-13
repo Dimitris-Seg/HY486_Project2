@@ -214,14 +214,7 @@ static void coordinator_get_most_popular_book(coordinator_t* self){
     if(response.type != MT_GET_MOST_POPULAR_BOOK_DONE){
         ERROR("Received rogue '%s' from process '%d'", message_type_to_str(response.type), self->loaner_leader.id);
         exit(EXIT_FAILURE);
-    }
-
-    bookid_t b_id       = response.args[0];
-    bookcost_t b_cost   = response.args[1];
-    size_t b_count      = response.args[2];
-    mpipid_t l_id       = response.args[3];
-    
-    INFO("Most popular book is {id=%d, cost=%d, count=%d, lib=%d}", b_id, b_cost, b_count, l_id);
+    }   
 }
 
 static void coordinator_check_num_books_loaned(coordinator_t* self){
