@@ -26,8 +26,7 @@
 #include <mpi/mpi.h>
 //
 
-mpiproc_t get_neighbor(gridpos_t coords, mpiproc_t proc, int nid)
-{
+mpiproc_t get_neighbor(gridpos_t coords, mpiproc_t proc, int nid){
     int N = proc.N;
 
     switch (nid)
@@ -47,42 +46,40 @@ mpiproc_t get_neighbor(gridpos_t coords, mpiproc_t proc, int nid)
 }
 
 // Random value in range [MIN_BOOK_PRICE, MAX_BOOK_PRICE]
-static bookcost_t random_book_cost()
-{
+static bookcost_t random_book_cost(){
     return MIN_BOOK_PRICE + (rand() % (MAX_BOOK_PRICE - MIN_BOOK_PRICE + 1));
 }
 
-library_t library_init(mpipid_t id, int N)
-{
+library_t library_init(mpipid_t id, int N){
     library_t lib = {
         .node = {.id = id, .N = N},
         .leader = -1,
         .coords = (gridpos_t){.i = (id - 1) % N, .j = (id - 1) / N},
-        .books = bookstorage_create(N * N), // Use N*N buckets
+        .books = bookstorage_create(N * N),     // Use N*N buckets
+        .donated = bookstorage_create(N * N),   //
         .children = sllist_create(),
         .book_locations = NULL,
         .donated_locations = NULL,
     };
 
-    for (int nid = 0; nid < 4; ++nid)
-    {
+    for (int nid = 0; nid < 4; ++nid){
         lib.neighbors[nid] = get_neighbor(lib.coords, lib.node, nid);
     }
 
     bookid_t b_id = (lib.node.id-1) * lib.node.N + 1;
 
-    for (int i = 0; i < N; ++i)
-    {
+    for (int i = 0; i < N; ++i){
         // Mass store N books with id b_id
-        bookstorage_mass_store(lib.books, (book_t){.id = b_id, .cost = random_book_cost()}, N);
+        book_t book = (book_t){.id = b_id, .cost = random_book_cost()};
+        DEBUG("Book '%d' cost is '%d'", book.id, book.cost);
+        bookstorage_mass_store(lib.books, book, N);
         ++b_id;
     }
 
     return lib;
 }
 
-void all_neighbors_unexplored(library_t self, sllist_t unexplored)
-{
+void all_neighbors_unexplored(library_t self, sllist_t unexplored){
     for (int i = 0; i < 4; ++i)
     {
         if (self.neighbors[i].id != -1)
@@ -112,7 +109,6 @@ static mpipid_t get_library_location(library_t self, bookid_t b_id){
     mpipid_t lib = libdict_find(self.donated_locations, b_id);
 
     if(lib != -1){
-        libdict_take(self.donated_locations, b_id, lib);
         return lib; // Found in donated books
     }else if (b_id <= self.node.N * self.node.N * self.node.N){ // N^3
         return self.book_locations[b_id-1]; // Refer to original book
@@ -136,8 +132,7 @@ void library_run(library_t self)
     sllist_t unexplored = sllist_create();
     all_neighbors_unexplored(self, unexplored);
 
-    while (TRUE)
-    {
+    while (TRUE){
         bool explore = FALSE;
 
         message_t message;
@@ -147,10 +142,9 @@ void library_run(library_t self)
 
         int source = status.MPI_SOURCE;
 
-        DEBUG("Received %s %d %d %d", message_type_to_str(message.type), message.args[0], message.args[1], message.args[2]);
+        DEBUG("Received %s %d %d %d %d", message_type_to_str(message.type), message.args[0], message.args[1], message.args[2], message.args[3]);
 
-        switch (message.type)
-        {
+        switch (message.type){
         case MT_START_LEADER_ELECTION:
         {
             explore = TRUE;
@@ -203,17 +197,52 @@ void library_run(library_t self)
         }
         case MT_LEND_BOOK:
         {
+            bool is_donated = FALSE;
+
             bookid_t b_id = message.args[0];
 
             book_lookup_t res = bookstorage_take(self.books, b_id);
+
+            if(!res.successful){
+                res = bookstorage_take(self.donated, b_id);
+                is_donated = TRUE;
+            }
 
             if (res.successful)
             {
                 // I already have the book
 
+                // If the book is donated we should update the leader with the new count
+                if(is_donated){
+                    if(self.leader==-1){
+                        ERROR("Leader election required before donation");
+                        exit(EXIT_FAILURE);
+                    }
+                    bookstorage_node_t entry = bookstorage_find(self.donated, b_id);
+                    if(!entry){
+                        ERROR("I never had any book with id '%d'", b_id);
+                        exit(EXIT_FAILURE);
+                    }
+
+                    message_t upd_donated = {
+                        .type = MT_UPD_DONATED,
+                        .args = {b_id, entry->count, self.node.id},
+                    };
+
+                    MPI_Send(&upd_donated, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
+
+                    message_t ack;
+                    MPI_Recv(&ack, 1, message_datatype, self.leader, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+                    if(ack.type != MT_ACK_UD){
+                        ERROR("Received rogue '%s' from '%d'", message_type_to_str(ack.type), self.leader);
+                        exit(EXIT_FAILURE);
+                    }
+                }
+
                 message_t get = {
                     .type = MT_GET_BOOK,
-                    .args = {b_id, -1, -1},
+                    .args = {b_id, TRUE, res.book.cost},
                 };
 
                 MPI_Send(&get, 1, message_datatype, source, 0, MPI_COMM_WORLD);
@@ -228,13 +257,8 @@ void library_run(library_t self)
                 }
 
                 if(self.leader == self.node.id){ // If I'm the leader already
-                    DEBUG("I'm already a leader!");
                     target_l_id = get_library_location(self, b_id); 
-                    DEBUG("target is: %d", target_l_id);
                 }else{
-
-                    DEBUG("My leader is '%d'", self.leader);
-
                     message_t find = {
                         .type = MT_FIND_BOOK,
                         .args = {b_id, -1, -1},
@@ -274,10 +298,11 @@ void library_run(library_t self)
             bookid_t b_count  = message.args[1];
             mpipid_t l_id     = message.args[2];
 
-            libdict_mass_store(self.donated_locations, (book_t){.id = b_id}, l_id, b_count);
+            libdict_update_count(self.donated_locations, (book_t){.id = b_id}, l_id, b_count);
 
             DEBUG("Leader updated their books, we have:");
-            libdict_map(self.donated_locations, print_book_location, NULL); // TODO: REMOVE TEST ONLY
+
+            //libdict_map(self.donated_locations, print_book_location, NULL); // TODO: REMOVE TEST ONLY
 
             message_t ack = {
                 .type = MT_ACK_UD,
@@ -288,9 +313,10 @@ void library_run(library_t self)
             break;
         }
         case MT_ACK_TB: {
-            bookid_t b_id    = message.args[0];
-            mpipid_t c_id    = message.args[1];
-            mpipid_t b_count = message.args[2];
+            bookid_t b_id     = message.args[0];
+            bookcost_t b_cost = message.args[1];
+            mpipid_t c_id     = message.args[2];
+            mpipid_t b_count  = message.args[3];
 
             if(b_count != -1){
                 if(self.node.id == self.leader){
@@ -298,27 +324,28 @@ void library_run(library_t self)
                     if(entry){
                         entry->count = b_count; // Keep leader's count updated too
                     }
-                }else{
-                    message_t upd = {
-                        .type = MT_UPD_DONATED,
-                        .args = {b_id, b_count, source},
-                    };
-
-                    MPI_Send(&upd, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
-
-                    message_t ack;
-                    MPI_Recv(&ack, 1, message_datatype, self.leader, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-                    if(ack.type != MT_ACK_UD){
-                        ERROR("Rogue '%s' received from leader, expected donation update ack", message_type_to_str(ack.type));
-                        exit(EXIT_FAILURE);
-                    }
                 }
+                // else{
+                //     message_t upd = {
+                //         .type = MT_UPD_DONATED,
+                //         .args = {b_id, b_count, source},
+                //     };
+
+                //     MPI_Send(&upd, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
+
+                //     message_t ack;
+                //     MPI_Recv(&ack, 1, message_datatype, self.leader, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+                //     if(ack.type != MT_ACK_UD){
+                //         ERROR("Rogue '%s' received from leader, expected donation update ack", message_type_to_str(ack.type));
+                //         exit(EXIT_FAILURE);
+                //     }
+                // }
             }
 
             message_t ack = {
                 .type = MT_ACK_TB,
-                .args = {b_id, -1, -1},
+                .args = {b_id, b_count, b_cost, -1},
             };
 
             MPI_Send(&ack, 1, message_datatype, c_id, 0, MPI_COMM_WORLD);
@@ -348,25 +375,59 @@ void library_run(library_t self)
         case MT_BOOK_REQUEST: {
             bookid_t b_id = message.args[0];
             bookid_t c_id = message.args[1];
+
+            bookcost_t b_cost = -1;
             
-            bookstorage_node_t entry = bookstorage_find(self.books, b_id);
+            bookstorage_t storage = self.books;
+            bookstorage_node_t entry = bookstorage_find(storage, b_id);
+
+            // If not in original books look at donated
             if(!entry){
-                ERROR("I don't have any book with id '%d'", b_id);
+                storage = self.donated;
+                entry = bookstorage_find(storage, b_id);
+            }
+
+            if(!entry){
+                ERROR("I never had any book with id '%d'", b_id);
                 exit(EXIT_FAILURE);
             }
 
-            book_lookup_t res = bookstorage_take(self.books, b_id);
+            book_lookup_t res = bookstorage_take(storage, b_id);
 
-            bookstorage_map(self.books, print_book, NULL); // TODO: REMOVE TEST ONLY
-
-            if(!res.successful){
+            if(res.successful){
+                b_cost = res.book.cost;
+            }else{
                 ERROR("I don't have any remaining books with id '%d'", b_id);
-                exit(EXIT_FAILURE);
             }
+
+            // If the book is donated we should update the leader with the new count
+            if(res.successful && storage == self.donated){
+                if(self.leader==-1){
+                    ERROR("Leader election required before book retrieval");
+                    exit(EXIT_FAILURE);
+                }
+
+                message_t upd_donated = {
+                    .type = MT_UPD_DONATED,
+                    .args = {b_id, entry->count, self.node.id},
+                };
+
+                MPI_Send(&upd_donated, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
+
+                message_t ack;
+                MPI_Recv(&ack, 1, message_datatype, self.leader, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+                if(ack.type != MT_ACK_UD){
+                    ERROR("Received rogue '%s' from '%d'", message_type_to_str(ack.type), self.leader);
+                    exit(EXIT_FAILURE);
+                }
+            }
+
+            int total = res.successful?(int)entry->count:BOOK_NOT_FOUND;
 
             message_t ack = {
                 .type = MT_ACK_TB,
-                .args = {b_id, c_id, entry->count},
+                .args = {b_id, b_cost, c_id, total},
             };
 
             MPI_Send(&ack, 1, message_datatype, source, 0, MPI_COMM_WORLD);
@@ -376,15 +437,13 @@ void library_run(library_t self)
         case MT_STORE_BOOK: {
             bookid_t b_id = message.args[0];
 
-            bookstorage_store(self.books, (book_t){.id = b_id});
+            bookstorage_store(self.donated, (book_t){.id = b_id});
 
-            bookstorage_node_t entry = bookstorage_find(self.books, b_id);
+            bookstorage_node_t entry = bookstorage_find(self.donated, b_id);
             if(!entry){
                 ERROR("Fatal error, no element in bookstorage for added entry");
                 exit(EXIT_FAILURE);
             }
-
-            DEBUG("I have '%d' copies of '%d'", entry->count, b_id);
 
             if(self.node.id != self.leader){
                 size_t count = entry->count;

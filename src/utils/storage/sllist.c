@@ -91,11 +91,13 @@ void sllist_remove(sllist_t list, sllist_elem_t elem){
             // Found
             if(prev){
                 prev->next = it->next;
-                --list->len;
-                free(it);
             }else{
                 list->head = it->next;
             }
+
+            --list->len;
+            free(it);
+            return;
         }
         prev = it;
         it = it->next;

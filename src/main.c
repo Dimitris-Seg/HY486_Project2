@@ -38,8 +38,6 @@ void print_books(bookstorage_node_t node, void *args){
 
 // Test main
 int main(int argc, char *argv[]){
-    srand(time(NULL)); // Seed randomizer
-    
     MPI_Init(&argc, &argv); // Setup mpi 
 
     //-- MPI is ready now --//
@@ -48,6 +46,8 @@ int main(int argc, char *argv[]){
     MPI_Comm_size(MPI_COMM_WORLD, &size); // The total number of processes running in this mpi session
     MPI_Comm_rank(MPI_COMM_WORLD, &rank); // The current process's rank
     SET_PROCESS_ID(rank); // For debugging
+
+    srand(rank); // Seed randomizer based on rank
 
     if(rank == COORDINATOR_INDEX){ // Early init. for coordinator debugging
         ENABLE_DEBUGGER();
@@ -94,7 +94,7 @@ int main(int argc, char *argv[]){
         DEBUG("Hello!");
 
         coordinator_t coord = coordinator_init(rank, N, instr_file);
-        coordinator_run(coord);
+        coordinator_run(&coord);
     }else if(rank<=N*N){
         // Process simulates a library
         // N^2 total libraries

@@ -39,7 +39,7 @@ struct client{
 
     mpipid_t donate_next;   // Next library to receive a donated book (works round-robin)
 
-    bookstorage_t books;    // Holds all books the client has under posession/borrowed
+    bookstorage_t books;    // Holds all books the client has ever had under posession/borrowed (never removed)
 
     sllist_t neigbors;      // All books that were in 'self' at some point
 };

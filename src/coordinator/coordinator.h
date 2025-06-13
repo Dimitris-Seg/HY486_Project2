@@ -48,6 +48,6 @@ coordinator_t coordinator_init(mpipid_t id, int N, string instr_file);
 /**
  * Executes the program (instructions) loaded in the coordinator
  */
-void coordinator_run(coordinator_t self);
+void coordinator_run(coordinator_t* self);
 
 #endif

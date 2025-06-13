@@ -71,7 +71,7 @@ enum message_type {
 
 struct message {
     int type;
-    int args[3];
+    int args[4];
 };
 
 // Initializes an MPI_Datatype for the message struct

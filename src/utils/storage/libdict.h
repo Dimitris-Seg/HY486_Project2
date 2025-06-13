@@ -63,14 +63,9 @@ mpipid_t libdict_find(libdict_t storage, bookid_t id);
 libdict_node_t libdict_find_strict(libdict_t storage, bookid_t id, mpipid_t lib);
 
 /**
- * Stores the book-library correspondance in storage
- */
-void libdict_store(libdict_t storage, book_t book, mpipid_t lib);
-
-/**
  * Stores 'count' copies of the book in storage
  */
-void libdict_mass_store(libdict_t storage, book_t book, mpipid_t lib, size_t count);
+void libdict_update_count(libdict_t storage, book_t book, mpipid_t lib, size_t count);
 
 /**
  * Removes a book with the specified id from the storage of a library and returns it if available

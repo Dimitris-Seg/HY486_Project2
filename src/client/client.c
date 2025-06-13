@@ -61,6 +61,26 @@ void send_to_neighbor(sllist_node_t node, void *datatype){
     MPI_Send(&message, 1, message_datatype, node->elem, 0, MPI_COMM_WORLD);
 }
 
+void most_popular(bookstorage_pnode_t* mp, mpipid_t* mp_lib, bookstorage_pnode_t new, mpipid_t new_lib){
+    INFO("Book 1: {id=%d, cost=%d, count=%d, lib=%d}", mp->book.id, mp->book.cost, mp->count, *mp_lib);
+    INFO("Book 2: {id=%d, cost=%d, count=%d, lib=%d}", new.book.id, new.book.cost, new.count, new_lib);
+    if(new.count > mp->count || (new.count == mp->count && new.book.cost > mp->book.cost)){
+        DEBUG("%d won", new.book.id);
+        *mp = new;
+        *mp_lib = new_lib;
+    }else{
+        DEBUG("%d won", mp->book.id);
+    }
+}
+
+void get_most_popular(bookstorage_node_t node, void *mp){
+    assert(mp && node);
+
+    bookstorage_pnode_t* mp_node = (bookstorage_pnode_t *)mp;
+    mpipid_t dummylib;
+    most_popular(mp_node, &dummylib, *node, dummylib);
+}
+
 void client_run(client_t self){
     DEBUG("Starting client '%d' execution", self.node.id);
 
@@ -72,6 +92,7 @@ void client_run(client_t self){
     sllist_t pending_acks       = sllist_create(); // Contains all pending acks
     sllist_t pending_takes      = sllist_create(); // Contains all pending take book requests
     sllist_t elects_received    = sllist_create(); // Contains all received 'elect' messages from neighbors
+    sllist_t bk_info_received   = sllist_create(); // Contains all received bk info messages from neigbors
     mpipid_t last_elect_target  = -1;              // Contains the recipient of the last sent 'elect'
 
     // Until termination signal
@@ -84,7 +105,7 @@ void client_run(client_t self){
 
         int source = status.MPI_SOURCE;
 
-        DEBUG("Received %s %d %d %d", message_type_to_str(message.type), message.args[0], message.args[1], message.args[2]);
+        DEBUG("Received %s %d %d %d %d", message_type_to_str(message.type), message.args[0], message.args[1], message.args[2], message.args[3]);
 
         switch(message.type){
         case MT_CONNECT:{
@@ -273,7 +294,11 @@ void client_run(client_t self){
         case MT_ACK_TB  : // Cascade
         case MT_GET_BOOK: {
 
-            bookid_t b_id   = message.args[0];
+            bookid_t b_id    = message.args[0];
+            bookid_t success = message.args[1] != BOOK_NOT_FOUND; //
+            bookcost_t cost  = message.args[2];
+
+            INFO("Received book '%d' with cost '%d'", b_id, cost);
 
             if(!sllist_search(pending_takes, source)){
                 ERROR("Received rogue '%s' from '%d'", message_type_to_str(message.type), source);
@@ -282,7 +307,8 @@ void client_run(client_t self){
 
             sllist_remove(pending_takes, source); // Consume pending take
 
-            bookstorage_store(self.books, (book_t){.id = b_id}); // We don't care about the cost (for now)
+            if(success)
+                bookstorage_store(self.books, (book_t){.id = b_id}); // We don't care about the cost (for now)
 
             message_t done = {
                 .type = MT_DONE_FIND_BOOK,
@@ -371,6 +397,113 @@ void client_run(client_t self){
 
             MPI_Send(&done, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
 
+            break;
+        }
+        case MT_GET_MOST_POPULAR_BOOK: {
+            bookstorage_pnode_t mp_book = {
+                .book = (book_t){
+                    .id = -1,
+                    .cost = -1,
+                },
+                .count = 0
+            };
+            mpipid_t mp_lib = mylib(self);
+            bookstorage_map(self.books, get_most_popular, &mp_book);
+            INFO("My most popular book is {id=%d, cost=%d, count=%d, lib=%d}", mp_book.book.id, mp_book.book.cost, mp_book.count, mp_lib);
+
+            if(sllist_length(self.neigbors) == 1 && source != COORDINATOR_INDEX){
+                // Send my most popular book to my parent
+                message_t info = {
+                    .type = MT_GET_POPULAR_BK_INFO,
+                    .args = {mp_book.book.id, mp_book.book.cost, mp_book.count, mp_lib},
+                };
+
+                DEBUG("Sending '%s' to '%d'", message_type_to_str(info.type), source);
+                MPI_Send(&info, 1, message_datatype, source, 0, MPI_COMM_WORLD);
+            }else{
+                sllist_node_t it = self.neigbors->head;
+
+                // Send to all neighbors except for parent (source)
+                while(it){
+                    if(it->elem != source){
+                        message_t get_most_popular_msg = {
+                            .type = MT_GET_MOST_POPULAR_BOOK,
+                            .args = {-1, -1, -1},
+                        };
+
+                        sllist_add(bk_info_received, it->elem);
+
+                        INFO("Sending '%s' to my child '%d'", message_type_to_str(get_most_popular_msg.type), it->elem);
+                        MPI_Send(&get_most_popular_msg, 1, message_datatype, it->elem, 0, MPI_COMM_WORLD);
+                    }
+                    it = it->next;
+                }
+
+                while(TRUE){
+                    message_t info;
+                    MPI_Status status;
+                    MPI_Recv(&info, 1, message_datatype, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+
+                    int sender = status.MPI_SOURCE;
+
+                    if(info.type != MT_GET_POPULAR_BK_INFO || !sllist_search(bk_info_received, sender)){
+                        ERROR("Received rogue '%s' from '%d'", message_type_to_str(info.type), sender);
+                        exit(EXIT_FAILURE);
+                    }
+
+                    sllist_remove(bk_info_received, sender);
+
+                    bookid_t b_id       = info.args[0];
+                    bookid_t b_cost     = info.args[1];
+                    bookid_t b_times    = info.args[2];
+                    bookid_t l_id       = info.args[3];
+
+                    // Find my most popular book and compare with received
+                    // ...
+
+                    if(self.leader == -1){
+                        ERROR("Loaner leader election required before most popular book can be acquired");
+                        exit(EXIT_FAILURE);
+                    }
+
+                    DEBUG("Going against %d", sender);
+                    most_popular(
+                        &mp_book, &mp_lib,
+                        (bookstorage_pnode_t){
+                            .book = (book_t){
+                                .id = b_id,
+                                .cost = b_cost,
+                            },
+                            .count = b_times,
+                        }, l_id
+                    );
+                    DEBUG("Book with id '%d' won", mp_book.book.id);
+
+                    if(sllist_empty(bk_info_received)){
+                        // Received info from all children , two cases:
+
+                        if(self.node.id == self.leader){
+                            // I'm the leader, respond to the coordinator
+                            message_t done = {
+                                .type = MT_GET_MOST_POPULAR_BOOK_DONE,
+                                .args = {mp_book.book.id, mp_book.book.cost, mp_book.count, mp_lib},
+                            };
+            
+                            MPI_Send(&done, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
+                        }else{
+                            // I'm not a leader, respond to parent
+                            message_t info = {
+                                .type = MT_GET_POPULAR_BK_INFO,
+                                .args = {mp_book.book.id, mp_book.book.cost, mp_book.count, mp_lib},
+                            };
+                            
+                            MPI_Send(&info, 1, message_datatype, source, 0, MPI_COMM_WORLD);
+                        }
+
+                        break;
+                    }
+                }
+            }
             break;
         }
         default:

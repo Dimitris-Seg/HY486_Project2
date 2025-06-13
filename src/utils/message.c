@@ -24,7 +24,7 @@
 void mpi_create_message_struct(MPI_Datatype *newtype){
     message_t message;
 
-    int block_lengths[] = {1, 3};
+    int block_lengths[] = {1, 4};
     MPI_Aint displacements[2];
     MPI_Datatype types[2] = {MPI_INT, MPI_INT};
 

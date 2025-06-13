@@ -21,6 +21,7 @@
 #include "coordinator.h"
 #include "../utils/storage/sllist.h"
 #include "../utils/message.h"
+#include "../utils/book.h"
 //
 #include <mpi/mpi.h>
 //
@@ -35,7 +36,9 @@ coordinator_t coordinator_init(mpipid_t id, int N, string instr_file){
     return coordinator;
 }
 
-static void coordinator_connect(coordinator_t self, int src, int target){
+static void coordinator_connect(coordinator_t* self, int src, int target){
+    (void)self; // Unused
+
     message_t message = {
         .type = MT_CONNECT,
         .args = {src, target, -1},
@@ -61,7 +64,7 @@ static void coordinator_connect(coordinator_t self, int src, int target){
     DEBUG("Received '%s' from %d", message_type_to_str(MT_ACK), src);
 }
 
-static void coordinator_le_libr(coordinator_t self){
+static void coordinator_le_libr(coordinator_t* self){
     message_t elect_msg = {
         .type = MT_START_LEADER_ELECTION,
         .args = {-1, -1, -1},
@@ -73,7 +76,7 @@ static void coordinator_le_libr(coordinator_t self){
     );
 
     // Broadcast election start to all libraries
-    for(int id=1; id<=self.node.N*self.node.N; ++id){ // All library ids
+    for(int id=1; id<=self->node.N*self->node.N; ++id){ // All library ids
         MPI_Send(&elect_msg, 1, message_datatype, id, 0, MPI_COMM_WORLD);
         DEBUG("Sent '%s' to %d", message_type_to_str(elect_msg.type), id);
     }
@@ -93,10 +96,10 @@ static void coordinator_le_libr(coordinator_t self){
     DEBUG("Received '%s' from %d", message_type_to_str(response.type), status.MPI_SOURCE);
     DEBUG("Elected library leader is '%d'", leader_id);
 
-    self.lib_leader.id = leader_id;
+    self->lib_leader.id = leader_id;
 }
 
-static void coordinator_le_loaners(coordinator_t self){
+static void coordinator_le_loaners(coordinator_t* self){
     message_t elect_msg = {
         .type = MT_START_LE_LOANERS,
         .args = {-1, -1, -1},
@@ -108,8 +111,8 @@ static void coordinator_le_loaners(coordinator_t self){
     );
 
     // Broadcast election start to all loaners
-    int start_index = self.node.N*self.node.N+1;
-    for(int id=start_index; id<start_index+(self.node.N*self.node.N*self.node.N)/2; ++id){ // All loaner ids
+    int start_index = self->node.N*self->node.N+1;
+    for(int id=start_index; id<start_index+(self->node.N*self->node.N*self->node.N)/2; ++id){ // All loaner ids
         MPI_Send(&elect_msg, 1, message_datatype, id, 0, MPI_COMM_WORLD);
         DEBUG("Sent '%s' to %d", message_type_to_str(elect_msg.type), id);
     }
@@ -129,10 +132,12 @@ static void coordinator_le_loaners(coordinator_t self){
     DEBUG("Received '%s' from %d", message_type_to_str(response.type), status.MPI_SOURCE);
     DEBUG("Elected loaner leader is '%d'", leader_id);
 
-    self.loaner_leader.id = leader_id;
+    self->loaner_leader.id = leader_id;
 }
 
-static void coordinator_take_book(coordinator_t self, int c_id, int b_id){
+static void coordinator_take_book(coordinator_t* self, int c_id, int b_id){
+    (void)self; // Unused
+
     message_t take_msg = {
         .type = MT_TAKE_BOOK,
         .args = {b_id, -1, -1},
@@ -156,7 +161,9 @@ static void coordinator_take_book(coordinator_t self, int c_id, int b_id){
     }
 }
 
-static void coordinator_donate_book(coordinator_t self, int c_id, int b_id, int count){
+static void coordinator_donate_book(coordinator_t* self, int c_id, int b_id, int count){
+    (void)self; // Unused
+
     message_t donate_msg = {
         .type = MT_NOTIFY_DONATE_BOOK,
         .args = {c_id, b_id, count},
@@ -183,15 +190,45 @@ static void coordinator_donate_book(coordinator_t self, int c_id, int b_id, int 
     }
 }
 
-static void coordinator_get_most_popular_book(coordinator_t self){
+static void coordinator_get_most_popular_book(coordinator_t* self){
+    message_t get_most_popular_msg = {
+        .type = MT_GET_MOST_POPULAR_BOOK,
+        .args = {-1, -1, -1},
+    };
+
+    MPI_Datatype message_datatype;
+    mpi_create_message_struct(
+        &message_datatype
+    );
+    
+    if(self->loaner_leader.id==-1){
+        ERROR("Loaner leader election required before most popular book can be acquired");
+        exit(EXIT_FAILURE);
+    }
+
+    MPI_Send(&get_most_popular_msg, 1, message_datatype, self->loaner_leader.id, 0, MPI_COMM_WORLD);
+
+    message_t response;
+    MPI_Recv(&response, 1, message_datatype, self->loaner_leader.id, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+    if(response.type != MT_GET_MOST_POPULAR_BOOK_DONE){
+        ERROR("Received rogue '%s' from process '%d'", message_type_to_str(response.type), self->loaner_leader.id);
+        exit(EXIT_FAILURE);
+    }
+
+    bookid_t b_id       = response.args[0];
+    bookcost_t b_cost   = response.args[1];
+    size_t b_count      = response.args[2];
+    mpipid_t l_id       = response.args[3];
+    
+    INFO("Most popular book is {id=%d, cost=%d, count=%d, lib=%d}", b_id, b_cost, b_count, l_id);
+}
+
+static void coordinator_check_num_books_loaned(coordinator_t* self){
     // Implementation pending...
 }
 
-static void coordinator_check_num_books_loaned(coordinator_t self){
-    // Implementation pending...
-}
-
-void coordinator_run(coordinator_t self){
+void coordinator_run(coordinator_t* self){
     size_t coordinator_index = 0;
 
     static const string tokennames[] = {
@@ -205,13 +242,13 @@ void coordinator_run(coordinator_t self){
         "INT",
     };
 
-    while(coordinator_index < self.instructions->len){
-        token_t token = self.instructions->tokens[coordinator_index];
+    while(coordinator_index < self->instructions->len){
+        token_t token = self->instructions->tokens[coordinator_index];
 
         switch (token.type){
         case TT_CONNECT:{                // 2 int args
-            token_t node_src = self.instructions->tokens[++coordinator_index];
-            token_t node_tgt = self.instructions->tokens[++coordinator_index];
+            token_t node_src = self->instructions->tokens[++coordinator_index];
+            token_t node_tgt = self->instructions->tokens[++coordinator_index];
 
             ENFORCE_ARG_TYPE(node_src.type, TT_INT, token.type);
             ENFORCE_ARG_TYPE(node_tgt.type, TT_INT, token.type);
@@ -231,8 +268,8 @@ void coordinator_run(coordinator_t self){
             break;
         }
         case TT_TAKE_BOOK:{              // 2 int args
-            token_t node_who = self.instructions->tokens[++coordinator_index];
-            token_t node_which = self.instructions->tokens[++coordinator_index];
+            token_t node_who = self->instructions->tokens[++coordinator_index];
+            token_t node_which = self->instructions->tokens[++coordinator_index];
 
             ENFORCE_ARG_TYPE(node_who.type, TT_INT, token.type);
             ENFORCE_ARG_TYPE(node_which.type, TT_INT, token.type);
@@ -242,9 +279,9 @@ void coordinator_run(coordinator_t self){
             break;
         }
         case TT_DONATE_BOOK:{            // 3 int args
-            token_t node_who = self.instructions->tokens[++coordinator_index];
-            token_t node_which = self.instructions->tokens[++coordinator_index];
-            token_t node_count = self.instructions->tokens[++coordinator_index];
+            token_t node_who = self->instructions->tokens[++coordinator_index];
+            token_t node_which = self->instructions->tokens[++coordinator_index];
+            token_t node_count = self->instructions->tokens[++coordinator_index];
 
             ENFORCE_ARG_TYPE(node_who.type, TT_INT, token.type);
             ENFORCE_ARG_TYPE(node_which.type, TT_INT, token.type);

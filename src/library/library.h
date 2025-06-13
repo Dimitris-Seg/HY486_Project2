@@ -41,7 +41,9 @@ struct library{
 
     sllist_t children;              // Children in the DFS tree determined by leader election
 
-    bookstorage_t books;            // Holds all books in the library with their counts
+    bookstorage_t books;            // Holds all original books in the library with their counts
+
+    bookstorage_t donated;          // Holds all donated books in the library with their counts
 
     mpipid_t *book_locations;       // Holds the library ids for every fixed book id (at index id)
 

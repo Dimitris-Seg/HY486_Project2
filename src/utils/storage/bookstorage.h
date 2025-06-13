@@ -26,6 +26,7 @@
 //
 
 typedef struct bookstorage*         bookstorage_t;
+typedef struct bookstorage_node     bookstorage_pnode_t; // Plain node (not pointer)
 typedef struct bookstorage_node*    bookstorage_node_t;
 typedef struct book_lookup          book_lookup_t;
 
