@@ -45,6 +45,8 @@ struct library{
 
     bookstorage_t donated;          // Holds all donated books in the library with their counts
 
+    size_t books_loaned;            // Tracks the number of books that have ever been loaned (for sanity check)
+
     mpipid_t *book_locations;       // Holds the library ids for every fixed book id (at index id)
 
     libdict_t donated_locations;   // Holds the library locations of donated books

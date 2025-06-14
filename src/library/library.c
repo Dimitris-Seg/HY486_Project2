@@ -24,6 +24,7 @@
 //
 #include <stdlib.h>
 #include <mpi/mpi.h>
+#include <assert.h>
 //
 
 mpiproc_t get_neighbor(gridpos_t coords, mpiproc_t proc, int nid){
@@ -45,6 +46,24 @@ mpiproc_t get_neighbor(gridpos_t coords, mpiproc_t proc, int nid){
     }
 }
 
+mpipid_t next_route_in_grid(library_t self){
+    // If y%2 is even, go right, else left
+    // If x/(N-1) is 1, go up
+
+    int nextI = self.coords.i - 2*(self.coords.j%2)+1;
+    if(nextI>self.node.N-1)nextI = self.node.N-1;
+    if(nextI<0)nextI = 0;
+
+    // When even check if i is N-1, else if it's 0
+    int nextJ = self.coords.j + (self.coords.i == ((1 - (self.coords.j%2)) * (self.node.N - 1))); 
+
+    if(nextJ >= self.node.N){
+        return -1; // Last one, no further routing in grid
+    }
+
+    return nextI + nextJ * self.node.N + 1;
+}
+
 // Random value in range [MIN_BOOK_PRICE, MAX_BOOK_PRICE]
 static bookcost_t random_book_cost(){
     return MIN_BOOK_PRICE + (rand() % (MAX_BOOK_PRICE - MIN_BOOK_PRICE + 1));
@@ -60,6 +79,7 @@ library_t library_init(mpipid_t id, int N){
         .children = sllist_create(),
         .book_locations = NULL,
         .donated_locations = NULL,
+        .books_loaned = 0,
     };
 
     for (int nid = 0; nid < 4; ++nid){
@@ -90,12 +110,16 @@ void all_neighbors_unexplored(library_t self, sllist_t unexplored){
 }
 
 void print_book(bookstorage_node_t node, void *ignore){
+    assert(node);
     (void)ignore;
+
     DEBUG("Book: %d (x%lu)", node->book.id, node->count);
 }
 
 void print_book_location(libdict_node_t node, void *ignore){
+    assert(node);
     (void)ignore;
+    
     DEBUG("Location: %d at %d (x%lu)", node->book.id, node->lib, node->count);
 }
 
@@ -129,6 +153,10 @@ void library_run(library_t self)
 
     int leader = self.node.id;
     int parent = self.node.id;
+
+    int total_loaned_books = 0;
+    sllist_t book_loaned_acks = sllist_create();
+
     sllist_t unexplored = sllist_create();
     all_neighbors_unexplored(self, unexplored);
 
@@ -211,6 +239,8 @@ void library_run(library_t self)
             if (res.successful)
             {
                 // I already have the book
+
+                ++self.books_loaned; // Update loaned book tracking
 
                 // If the book is donated we should update the leader with the new count
                 if(is_donated){
@@ -396,6 +426,7 @@ void library_run(library_t self)
 
             if(res.successful){
                 b_cost = res.book.cost;
+                ++self.books_loaned; // Update loaned book tracking
             }else{
                 ERROR("I don't have any remaining books with id '%d'", b_id);
             }
@@ -471,8 +502,96 @@ void library_run(library_t self)
 
             break;
         }
+        case MT_CHECK_NUM_BOOKS_LOAN: {
+            if(self.leader==-1){
+                ERROR("Leader election required before loaned books sanity check");
+                exit(EXIT_FAILURE);
+            }
+
+            // If received from the coordinator, I (should be leader) will send it to the first library to start
+            if(source == COORDINATOR_INDEX){
+                if(self.node.id != self.leader){
+                    ERROR("Unexpected '%s' received from coordinator (destined for leader)", message_type_to_str(message.type));
+                    exit(EXIT_FAILURE);
+                }
+
+                total_loaned_books = 0;             // Reset state
+                sllist_removeAll(book_loaned_acks); //
+
+                message_t start = {
+                    .type = MT_CHECK_NUM_BOOKS_LOAN,
+                    .args = {-1, -1, -1},
+                };
+
+                DEBUG("Sending '%s' to library '%d'", message_type_to_str(start.type), FIRST_LIBRARY);
+                MPI_Send(&start, 1, message_datatype, FIRST_LIBRARY, 0, MPI_COMM_WORLD);
+            }else{
+                // Forward to next in grid if such a node exists
+                mpipid_t next_route = next_route_in_grid(self);
+                if(next_route!=-1){
+                    message_t forward = {
+                        .type = MT_CHECK_NUM_BOOKS_LOAN,
+                        .args = {-1, -1, -1},
+                    };
+
+                    DEBUG("Sending '%s' to library '%d'", message_type_to_str(forward.type), next_route);
+                    MPI_Send(&forward, 1, message_datatype, next_route, 0, MPI_COMM_WORLD);
+                }
+
+                // Respond to leader
+                message_t books_loaned_msg = {
+                    .type = MT_NUM_BOOKS_LOANED,
+                    .args = {self.books_loaned, -1, -1},
+                };
+
+                DEBUG("Sending '%s' to library leader '%d'", message_type_to_str(books_loaned_msg.type), self.leader);
+                MPI_Send(&books_loaned_msg, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
+            }
+            break;
+        }
+        case MT_NUM_BOOKS_LOANED: {
+            if(self.leader==-1){
+                ERROR("Leader election required before loaned books sanity check");
+                exit(EXIT_FAILURE);
+            }
+
+            if(self.node.id != self.leader){
+                ERROR("Only leader is expected to receive '%s'", message_type_to_str(message.type));
+                exit(EXIT_FAILURE);
+            }
+
+            if(sllist_search(book_loaned_acks, source)){
+                ERROR("Duplicate '%s' received from '%d'", message_type_to_str(message.type), source);
+                exit(EXIT_FAILURE);
+            }
+
+            sllist_add(book_loaned_acks, source);
+
+            int new_loans = message.args[0];
+
+            if(new_loans < 0){
+                ERROR("Invalid loaned books received from '%d'", source);
+                exit(EXIT_FAILURE);
+            }
+
+            total_loaned_books += new_loans;
+
+            // If I've received a message from all libraries
+            if(sllist_length(book_loaned_acks) == SQUARE(self.node.N)){
+                INFO("Library Books: %d", total_loaned_books);
+
+                message_t done = {
+                    .type = MT_CHECK_NUM_BOOKS_LOAN_DONE,
+                    .args = {total_loaned_books, -1, -1},
+                };
+
+                DEBUG("Sending '%s' to coordinator", message_type_to_str(done.type));
+                MPI_Send(&done, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
+            }
+
+            break;
+        }
         default:
-            sllist_destroy(unexplored); // Not needed anymore
             ERROR("Unexpected message '%s' received from %d", message_type_to_str(message.type), source);
             exit(EXIT_FAILURE);
         }
@@ -555,4 +674,5 @@ void library_run(library_t self)
     }
 
     sllist_destroy(unexplored); // Not needed anymore
+    sllist_destroy(book_loaned_acks);
 }

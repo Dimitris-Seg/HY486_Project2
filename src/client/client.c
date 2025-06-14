@@ -40,6 +40,7 @@ client_t client_init(mpipid_t id, int N){
 }
 
 void print_neighbor(sllist_node_t node, void *ignored){
+    (void)node;
     (void)ignored; // Ignore waring
 
     DEBUG("'%d' is a neighbor", node->elem);
@@ -47,9 +48,7 @@ void print_neighbor(sllist_node_t node, void *ignored){
 
 // Dynamically compute the client's corresponding library
 static mpipid_t mylib(client_t self){
-    
-    mpipid_t nsq = self.node.N*self.node.N;
-    return 2*(self.node.id-nsq)/((nsq*self.node.N)/(double)nsq)+1;
+    return 2*(self.node.id-SQUARE(self.node.N))/((SQUARE(self.node.N)*self.node.N)/(double)SQUARE(self.node.N))+1;
 }
 
 void send_to_neighbor(sllist_node_t node, void *datatype){
@@ -75,6 +74,11 @@ void get_most_popular(bookstorage_node_t node, void *mp){
     most_popular(mp_node, *node);
 }
 
+void count_book(bookstorage_node_t node, void *count){
+    assert(node && count);
+    *((int*)count) += node->count;
+}
+
 void client_run(client_t self){
     DEBUG("Starting client '%d' execution", self.node.id);
 
@@ -82,6 +86,9 @@ void client_run(client_t self){
     mpi_create_message_struct(
         &message_datatype
     );
+
+    int total_loaned_books = 0;
+    sllist_t book_loaned_acks = sllist_create();
 
     sllist_t pending_acks       = sllist_create(); // Contains all pending acks
     sllist_t pending_takes      = sllist_create(); // Contains all pending take book requests
@@ -242,18 +249,18 @@ void client_run(client_t self){
 
                     self.leader = self.node.id; // Update local leader field
 
-                    INFO("Sending '%s' to all neighbors", message_type_to_str(elect_done.type));
+                    DEBUG("Sending '%s' to all neighbors", message_type_to_str(elect_done.type));
 
                     // Broadcast election start to all other loaners
-                    int start_index = self.node.N*self.node.N+1;
-                    for(int id=start_index; id<start_index+(self.node.N*self.node.N*self.node.N)/2; ++id){ // All loaner ids
+                    int start_index = SQUARE(self.node.N)+1;
+                    for(int id=start_index; id<start_index+(CUBE(self.node.N))/2; ++id){ // All loaner ids
                         if(id!=self.node.id){
                             MPI_Send(&elect_done, 1, message_datatype, id, 0, MPI_COMM_WORLD);
                             DEBUG("Sent '%s' to %d", message_type_to_str(elect_done.type), id);
                         }
                     }
 
-                    INFO("Sending '%s' to coordinator", message_type_to_str(elect_res.type));
+                    DEBUG("Sending '%s' to coordinator", message_type_to_str(elect_res.type));
                     MPI_Send(&elect_res, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
                 }
             }
@@ -343,7 +350,7 @@ void client_run(client_t self){
             };
 
             for(size_t copy = 0; copy < copies; ++copy){
-                mpipid_t lib = (self.donate_next++)%(self.node.N*self.node.N) + 1; // donate_next/(N^2)
+                mpipid_t lib = (self.donate_next++)%(SQUARE(self.node.N)) + 1; // donate_next/(N^2)
                 DEBUG("Sending '%s' to '%d'", message_type_to_str(donate.type), lib);
                 MPI_Send(&donate, 1, message_datatype, lib, 0, MPI_COMM_WORLD);
 
@@ -390,113 +397,6 @@ void client_run(client_t self){
 
             break;
         }
-        // case MT_GET_MOST_POPULAR_BOOK: {
-        //     bookstorage_pnode_t mp_book = {
-        //         .book = (book_t){
-        //             .id = -1,
-        //             .cost = -1,
-        //         },
-        //         .count = 0
-        //     };
-        //     mpipid_t mp_lib = mylib(self);
-        //     bookstorage_map(self.books, get_most_popular, &mp_book);
-        //     INFO("My most popular book is {id=%d, cost=%d, count=%d, lib=%d}", mp_book.book.id, mp_book.book.cost, mp_book.count, mp_lib);
-
-        //     if(sllist_length(self.neigbors) == 1 && source != COORDINATOR_INDEX){
-        //         // Send my most popular book to my parent
-        //         message_t info = {
-        //             .type = MT_GET_POPULAR_BK_INFO,
-        //             .args = {mp_book.book.id, mp_book.book.cost, mp_book.count, mp_lib},
-        //         };
-
-        //         DEBUG("Sending '%s' to '%d'", message_type_to_str(info.type), source);
-        //         MPI_Send(&info, 1, message_datatype, source, 0, MPI_COMM_WORLD);
-        //     }else{
-        //         sllist_node_t it = self.neigbors->head;
-
-        //         // Send to all neighbors except for parent (source)
-        //         while(it){
-        //             if(it->elem != source){
-        //                 message_t get_most_popular_msg = {
-        //                     .type = MT_GET_MOST_POPULAR_BOOK,
-        //                     .args = {-1, -1, -1},
-        //                 };
-
-        //                 sllist_add(bk_info_received, it->elem);
-
-        //                 INFO("Sending '%s' to my child '%d'", message_type_to_str(get_most_popular_msg.type), it->elem);
-        //                 MPI_Send(&get_most_popular_msg, 1, message_datatype, it->elem, 0, MPI_COMM_WORLD);
-        //             }
-        //             it = it->next;
-        //         }
-
-        //         while(TRUE){
-        //             message_t info;
-        //             MPI_Status status;
-        //             MPI_Recv(&info, 1, message_datatype, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-
-        //             int sender = status.MPI_SOURCE;
-
-        //             if(info.type != MT_GET_POPULAR_BK_INFO || !sllist_search(bk_info_received, sender)){
-        //                 ERROR("Received rogue '%s' from '%d'", message_type_to_str(info.type), sender);
-        //                 exit(EXIT_FAILURE);
-        //             }
-
-        //             sllist_remove(bk_info_received, sender);
-
-        //             bookid_t b_id       = info.args[0];
-        //             bookid_t b_cost     = info.args[1];
-        //             bookid_t b_times    = info.args[2];
-        //             bookid_t l_id       = info.args[3];
-
-        //             // Find my most popular book and compare with received
-        //             // ...
-
-        //             if(self.leader == -1){
-        //                 ERROR("Loaner leader election required before most popular book can be acquired");
-        //                 exit(EXIT_FAILURE);
-        //             }
-
-        //             DEBUG("Going against %d", sender);
-        //             most_popular(
-        //                 &mp_book, &mp_lib,
-        //                 (bookstorage_pnode_t){
-        //                     .book = (book_t){
-        //                         .id = b_id,
-        //                         .cost = b_cost,
-        //                     },
-        //                     .count = b_times,
-        //                 }, l_id
-        //             );
-        //             DEBUG("Book with id '%d' won", mp_book.book.id);
-
-        //             if(sllist_empty(bk_info_received)){
-        //                 // Received info from all children , two cases:
-
-        //                 if(self.node.id == self.leader){
-        //                     // I'm the leader, respond to the coordinator
-        //                     message_t done = {
-        //                         .type = MT_GET_MOST_POPULAR_BOOK_DONE,
-        //                         .args = {mp_book.book.id, mp_book.book.cost, mp_book.count, mp_lib},
-        //                     };
-            
-        //                     MPI_Send(&done, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
-        //                 }else{
-        //                     // I'm not a leader, respond to parent
-        //                     message_t info = {
-        //                         .type = MT_GET_POPULAR_BK_INFO,
-        //                         .args = {mp_book.book.id, mp_book.book.cost, mp_book.count, mp_lib},
-        //                     };
-                            
-        //                     MPI_Send(&info, 1, message_datatype, source, 0, MPI_COMM_WORLD);
-        //                 }
-
-        //                 break;
-        //             }
-        //         }
-        //     }
-        //     break;
-        // }
         case MT_GET_MOST_POPULAR_BOOK: {
             if(self.leader == -1){
                 ERROR("Loaner leader election required before most popular book can be acquired");
@@ -531,7 +431,7 @@ void client_run(client_t self){
                             .args = {-1, -1, -1},
                         };
 
-                        INFO("Sending '%s' to my child '%d'", message_type_to_str(get_most_popular_msg.type), it->elem);
+                        DEBUG("Sending '%s' to my child '%d'", message_type_to_str(get_most_popular_msg.type), it->elem);
                         MPI_Send(&get_most_popular_msg, 1, message_datatype, it->elem, 0, MPI_COMM_WORLD);
                     }
                     it = it->next;
@@ -539,8 +439,8 @@ void client_run(client_t self){
             }
 
             if(self.node.id == self.leader){
-                size_t total_libraries = self.node.N*self.node.N;
-                size_t total_loaners = self.node.N*self.node.N*self.node.N/2;
+                int total_libraries = SQUARE(self.node.N);
+                int total_loaners = CUBE(self.node.N)/2;
                 bookstorage_pnode_t* gathered_info = safe_calloc(total_libraries, sizeof(bookstorage_pnode_t));
 
                 for(int i=1;i<total_libraries;++i){
@@ -549,7 +449,7 @@ void client_run(client_t self){
 
                 gathered_info[my_lib-1] = mp_book; // Initialize with my own
 
-                while(sllist_length(bk_info_received) < total_loaners - 1){ // - myself
+                while((int)sllist_length(bk_info_received) < total_loaners - 1){ // - myself
                     message_t info;
                     MPI_Status status;
 
@@ -584,7 +484,10 @@ void client_run(client_t self){
                 for(int i=1;i<=total_libraries;++i){
                     bookstorage_pnode_t node = gathered_info[i-1];
                     if(node.count>0)
-                        INFO("Library '%d' has most popular book {id=%d, cost=%d, count=%d}", i, node.book.id, node.book.cost, node.count);
+                        INFO(
+                            "Most popular book in library group #%-2d is (%2d) (cost: %2d, loaned %2ld time%s)", 
+                            i, node.book.id, node.book.cost, node.count, node.count>1?"s":""
+                        );
                 }
 
                 // Not needed anymore
@@ -607,6 +510,84 @@ void client_run(client_t self){
                 
                 MPI_Send(&info, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
             }
+            break;
+        }
+        case MT_CHECK_NUM_BOOKS_LOAN: {
+            if(self.leader==-1){
+                ERROR("Leader election required before loaned books sanity check");
+                exit(EXIT_FAILURE);
+            }
+
+            // Forward to all neighbors (if any) except sender
+            sllist_node_t it = self.neigbors->head;
+            while(it){
+                if(it->elem != source){
+                    message_t forward = {
+                        .type = MT_CHECK_NUM_BOOKS_LOAN,
+                        .args = {-1, -1, -1},
+                    };
+
+                    DEBUG("Sending '%s' to loaner '%d'", message_type_to_str(forward.type), it->elem);
+                    MPI_Send(&forward, 1, message_datatype, it->elem, 0, MPI_COMM_WORLD);
+                }
+
+                it = it->next;
+            }
+
+            // Count my books
+            int books_loaned = 0;
+            bookstorage_map(self.books, count_book, &books_loaned);
+
+            // Respond to leader
+            message_t books_loaned_msg = {
+                .type = MT_NUM_BOOKS_LOANED,
+                .args = {books_loaned, -1, -1},
+            };
+
+            DEBUG("Sending '%s' to loaner leader '%d'", message_type_to_str(books_loaned_msg.type), self.leader);
+            MPI_Send(&books_loaned_msg, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
+            break;
+        }
+        case MT_NUM_BOOKS_LOANED: {
+            if(self.leader==-1){
+                ERROR("Leader election required before loaned books sanity check");
+                exit(EXIT_FAILURE);
+            }
+
+            if(self.node.id != self.leader){
+                ERROR("Only leader is expected to receive '%s'", message_type_to_str(message.type));
+                exit(EXIT_FAILURE);
+            }
+
+            if(sllist_search(book_loaned_acks, source)){
+                ERROR("Duplicate '%s' received from '%d'", message_type_to_str(message.type), source);
+                exit(EXIT_FAILURE);
+            }
+
+            sllist_add(book_loaned_acks, source);
+
+            int new_loans = message.args[0];
+
+            if(new_loans < 0){
+                ERROR("Invalid loaned books received from '%d'", source);
+                exit(EXIT_FAILURE);
+            }
+
+            total_loaned_books += new_loans;
+
+            // If I've received a message from all loaners
+            if((int)sllist_length(book_loaned_acks) == CUBE(self.node.N)/2){
+                INFO("Loaner Books: %d", total_loaned_books);
+
+                message_t done = {
+                    .type = MT_CHECK_NUM_BOOKS_LOAN_DONE,
+                    .args = {total_loaned_books, -1, -1},
+                };
+
+                DEBUG("Sending '%s' to coordinator", message_type_to_str(done.type));
+                MPI_Send(&done, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
+            }
+
             break;
         }
         default:

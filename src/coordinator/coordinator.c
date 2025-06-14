@@ -94,7 +94,7 @@ static void coordinator_le_libr(coordinator_t* self){
     int leader_id = status.MPI_SOURCE;
 
     DEBUG("Received '%s' from %d", message_type_to_str(response.type), status.MPI_SOURCE);
-    DEBUG("Elected library leader is '%d'", leader_id);
+    INFO("Elected library leader is '%d'", leader_id);
 
     self->lib_leader.id = leader_id;
 }
@@ -130,7 +130,7 @@ static void coordinator_le_loaners(coordinator_t* self){
     int leader_id = status.MPI_SOURCE;
 
     DEBUG("Received '%s' from %d", message_type_to_str(response.type), status.MPI_SOURCE);
-    DEBUG("Elected loaner leader is '%d'", leader_id);
+    INFO("Elected loaner leader is '%d'", leader_id);
 
     self->loaner_leader.id = leader_id;
 }
@@ -218,7 +218,44 @@ static void coordinator_get_most_popular_book(coordinator_t* self){
 }
 
 static void coordinator_check_num_books_loaned(coordinator_t* self){
-    // Implementation pending...
+    message_t check_num_books_msg = {
+        .type = MT_CHECK_NUM_BOOKS_LOAN,
+        .args = {-1, -1, -1},
+    };
+
+    MPI_Datatype message_datatype;
+    mpi_create_message_struct(
+        &message_datatype
+    );
+    
+    if(self->lib_leader.id==-1){
+        ERROR("Library leader election required before loaned book count sanity check can be performed");
+        exit(EXIT_FAILURE);
+    }
+
+    // Send to library leader and loaner leader
+    MPI_Send(&check_num_books_msg, 1, message_datatype, self->lib_leader.id, 0, MPI_COMM_WORLD);
+    MPI_Send(&check_num_books_msg, 1, message_datatype, self->loaner_leader.id, 0, MPI_COMM_WORLD);
+
+    message_t lib_response;
+    message_t loaner_response;
+
+    MPI_Recv(&lib_response, 1, message_datatype, self->lib_leader.id, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    if(lib_response.type != MT_CHECK_NUM_BOOKS_LOAN_DONE){
+        ERROR("Received rogue '%s' from process '%d'", message_type_to_str(lib_response.type), self->lib_leader.id);
+        exit(EXIT_FAILURE);
+    }   
+
+    MPI_Recv(&loaner_response, 1, message_datatype, self->loaner_leader.id, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    if(loaner_response.type != MT_CHECK_NUM_BOOKS_LOAN_DONE){
+        ERROR("Received rogue '%s' from process '%d'", message_type_to_str(loaner_response.type), self->loaner_leader.id);
+        exit(EXIT_FAILURE);
+    } 
+
+    int b1 = loaner_response.args[0];
+    int b2 = lib_response.args[0];
+
+    INFO("CheckNumBooksLoaned %s", b1==b2?"SUCCESS":"FAILED");
 }
 
 void coordinator_run(coordinator_t* self){

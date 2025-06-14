@@ -34,7 +34,7 @@ extern int process_id;      // The current process id for debugging purposes
 #define ALL_DEBUG       1 // If true all processes can print debug logs
 #define FAIL_ON_ERROR   0 // The process will automatically fail on the first error if true
 #define FAIL_ON_WARN    0 // The process will automatically fail on the first warning if true
-#define DEBUGGING_ON    1 // Enables debug logs (DEBUG)
+#define DEBUGGING_ON    0 // Enables debug logs (DEBUG)
 #define WATERMARK_ON    1 // CSD watermark at the start
 #define FLUSH_OUTPUT    0 // If true all debug (DEBUT & ERROR) output will be flushed
 #define COLORS          1 // Use terminal colors
@@ -92,11 +92,11 @@ string get_current_time();
 #define CUSTOM_LOG(tag, msg, ...) printf("[%s]\t%s[%s %s] %s[%-12s:%2d]:%s " msg "%s\n", tag, TINT_MAG, get_current_date(), get_current_time(), TINT_BLUE, process_name, process_id, TINT_CYAN, ##__VA_ARGS__, TINT_NONE)
 
 #if FAIL_ON_ERROR
-    #define ERROR(msg, ...) COLOR_RED, CUSTOM_LOG("ERROR", msg, ##__VA_ARGS__), COLOR_RESET, exit(EXIT_FAILURE)
+    #define ERROR(msg, ...) CUSTOM_LOG(TINT_RED"ERROR"TINT_NONE, msg, ##__VA_ARGS__), exit(EXIT_FAILURE)
 #elif FLUSH_OUTPUT
-    #define ERROR(msg, ...) COLOR_RED, CUSTOM_LOG("ERROR", msg, ##__VA_ARGS__), COLOR_RESET, fflush(stdout)
+    #define ERROR(msg, ...) CUSTOM_LOG(TINT_RED"ERROR"TINT_NONE, msg, ##__VA_ARGS__), fflush(stdout)
 #else
-    #define ERROR(msg, ...) COLOR_RED, CUSTOM_LOG("ERROR", msg, ##__VA_ARGS__), COLOR_RESET
+    #define ERROR(msg, ...) CUSTOM_LOG(TINT_RED"ERROR"TINT_NONE, msg, ##__VA_ARGS__)
 #endif
 
 #if DEBUGGING_ON
@@ -109,7 +109,7 @@ string get_current_time();
     #define DEBUG(MSG, ...)
 #endif
 
-#define INFO(msg, ...) (debugger?CUSTOM_LOG(TINT_GREEN"INFO"TINT_NONE, msg, ##__VA_ARGS__):(void)(0))
+#define INFO(msg, ...) CUSTOM_LOG(TINT_GREEN"INFO"TINT_NONE, msg, ##__VA_ARGS__)
 
 
 #if FAIL_ON_WARN

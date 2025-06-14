@@ -27,10 +27,15 @@
 #define NULL_MPI_PROC (mpiproc_t){.id = -1}   // Macro NULL process initializer (dummy)
 #define MPI_PROC_NULL(proc) ((proc).id == -1) // Macro to find when a process is set to NULL (doesn't exist)
 
+#define SQUARE(N) ((N)*(N))
+#define CUBE(N) ((N)*(N)*(N))
+
 #define MAX_BOOK_PRICE 100 // The upper bound for the randomized book prices
 #define MIN_BOOK_PRICE 5   // The lower bound -//-
 
 #define BOOK_NOT_FOUND -2   // Error response code for unsuccessful lookup (insufficient books available)
+
+#define FIRST_LIBRARY 1     // Do not change, only for readability
 #define COORDINATOR_INDEX 0 // Do not change, only for readability
 
 typedef int                 mpipid_t;

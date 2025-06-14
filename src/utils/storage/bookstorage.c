@@ -84,6 +84,11 @@ void bookstorage_mass_store(bookstorage_t storage, book_t book, size_t count){
     if(it){
         // If it's already contained simply increase its counter
         it->count+=count; 
+
+        // Update price if old one didn't have any
+        if(it->book.cost <= 0){
+            it->book.cost = book.cost;
+        }
     }else{
         // If it's a new book we must insert it in the structure anew
         bookstorage_node_t node = safe_malloc(sizeof(struct bookstorage_node));
