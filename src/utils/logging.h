@@ -142,7 +142,7 @@ string get_current_time();
 #endif
 
 #define PRINT_LOG_HELPER() if(debugger)\
-    printf(TINT_GREEN"[TYPE] "TINT_MAG" [       DATE        ] "TINT_BLUE"[ PROCESS | ID ] "TINT_CYAN" [ MESSAGE ]\n"TINT_NONE),\
+    printf(TINT_GREEN"[TYPE] "TINT_MAG" [       DATE        ] "TINT_BLUE"[ PROCESS  | ID ] "TINT_CYAN" [ MESSAGE ]\n"TINT_NONE),\
     printf("────────────────────────────────────────────────────────────\n")
 
 #endif
