@@ -58,7 +58,7 @@ void send_to_neighbor(sllist_node_t node, void *datatype){
     MPI_Datatype message_datatype = *(data.datatype);
     message_t message = *(data.message);
 
-    MPI_Send(&message, 1, message_datatype, node->elem, 0, MPI_COMM_WORLD);
+    Send(&message, 1, message_datatype, node->elem, 0, MPI_COMM_WORLD);
 }
 
 void most_popular(bookstorage_pnode_t* mp, bookstorage_pnode_t new){
@@ -101,7 +101,7 @@ void client_run(client_t self){
 
         MPI_Status status;
 
-        MPI_Recv(&message, 1, message_datatype, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+        Recv(&message, 1, message_datatype, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
 
         int source = status.MPI_SOURCE;
 
@@ -126,7 +126,7 @@ void client_run(client_t self){
                 .args = {message.args[0], message.args[1], -1},
             };
 
-            MPI_Send(&neighbor, 1, message_datatype, neighbor_id, 0, MPI_COMM_WORLD);
+            Send(&neighbor, 1, message_datatype, neighbor_id, 0, MPI_COMM_WORLD);
 
             break;
         }
@@ -147,8 +147,8 @@ void client_run(client_t self){
                 .args = {-1, -1, -1},
             };
 
-            DEBUG("Sending '%s' to '%d'", message_type_to_str(ack.type), neighbor_id);
-            MPI_Send(&ack, 1, message_datatype, neighbor_id, 0, MPI_COMM_WORLD);
+            DEBUG("MPI_Sending '%s' to '%d'", message_type_to_str(ack.type), neighbor_id);
+            Send(&ack, 1, message_datatype, neighbor_id, 0, MPI_COMM_WORLD);
 
             break;
         }
@@ -170,7 +170,7 @@ void client_run(client_t self){
                 .args = {-1, -1, -1},
             };
 
-            MPI_Send(&ack, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
+            Send(&ack, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
 
             break;
         }
@@ -210,7 +210,7 @@ void client_run(client_t self){
             size_t pending_neighbors = sllist_length(self.neigbors) - sllist_length(elects_received);
 
             if(pending_neighbors == 1){
-                // Send elect to only non-elected neighbor
+                // MPI_Send elect to only non-elected neighbor
             
                 // Here we find the only pending neighbor
                 sllist_node_t it = self.neigbors->head;
@@ -222,8 +222,8 @@ void client_run(client_t self){
                             .args = {-1, -1, -1},
                         };
                     
-                        DEBUG("Sending '%s' to '%d'", message_type_to_str(elect.type), it->elem);
-                        MPI_Send(&elect, 1, message_datatype, it->elem, 0, MPI_COMM_WORLD);
+                        DEBUG("MPI_Sending '%s' to '%d'", message_type_to_str(elect.type), it->elem);
+                        Send(&elect, 1, message_datatype, it->elem, 0, MPI_COMM_WORLD);
 
                         last_elect_target = it->elem;
 
@@ -237,31 +237,58 @@ void client_run(client_t self){
                 if((last_elect_target == source && self.node.id > source)||(pending_neighbors==0 && last_elect_target == -1)){ 
                     // I'm the winner
 
-                    message_t elect_done = {
+                    message_t elect_res = {
                         .type = MT_LE_LOANERS,
                         .args = {self.node.id, -1, -1},
                     };
 
-                    message_t elect_res = {
+                    message_t elect_done = {
                         .type = MT_LE_LOANERS_DONE,
                         .args = {-1, -1, -1},
                     };
 
+                    last_elect_target = -1; // Prevent duplicates
                     self.leader = self.node.id; // Update local leader field
 
-                    DEBUG("Sending '%s' to all neighbors", message_type_to_str(elect_done.type));
+                    DEBUG("MPI_Sending '%s' to all other loaners", message_type_to_str(elect_res.type));
+
+                    sllist_t pending_le_acks = sllist_create();
 
                     // Broadcast election start to all other loaners
                     int start_index = SQUARE(self.node.N)+1;
                     for(int id=start_index; id<start_index+(CUBE(self.node.N))/2; ++id){ // All loaner ids
                         if(id!=self.node.id){
-                            MPI_Send(&elect_done, 1, message_datatype, id, 0, MPI_COMM_WORLD);
-                            DEBUG("Sent '%s' to %d", message_type_to_str(elect_done.type), id);
+                            sllist_add(pending_le_acks, id);
+                            Send(&elect_res, 1, message_datatype, id, 0, MPI_COMM_WORLD);
+                            DEBUG("Sent '%s' to %d", message_type_to_str(elect_res.type), id);
                         }
                     }
 
-                    DEBUG("Sending '%s' to coordinator", message_type_to_str(elect_res.type));
-                    MPI_Send(&elect_res, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
+                    // Ensure everyone knows the elected leader before finishing
+                    while(!sllist_empty(pending_le_acks)){
+                        message_t ack;
+                        MPI_Status status;
+
+                        Recv(&ack, 1, message_datatype, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+
+                        int sender = status.MPI_SOURCE;
+
+                        if(ack.type != MT_ACK_LE_LOANERS)continue; // Not what I'm looking for
+
+                        if(!sllist_search(pending_le_acks, sender)){
+                            ERROR("Duplicate '%s' from '%d'", message_type_to_str(ack.type), sender);
+                            exit(EXIT_FAILURE);
+                        }
+
+                        sllist_remove(pending_le_acks, sender);
+                    }
+
+                    cleanup_mpi_in_buffers(); // Clean up input buffer to avoid garbage
+
+                    sllist_destroy(pending_le_acks); // Not needed anymore
+
+                    DEBUG("MPI_Sending '%s' to coordinator", message_type_to_str(elect_done.type));
+                    Send(&elect_done, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
                 }
             }
 
@@ -272,6 +299,16 @@ void client_run(client_t self){
             sllist_removeAll(elects_received);
             last_elect_target = -1;
             self.leader = source; // Update local leader field
+
+            message_t ack = {
+                .type = MT_ACK_LE_LOANERS,
+                .args = {-1, -1, -1},
+            };
+
+            cleanup_mpi_in_buffers(); // Cleanup input buffer to avoid garbage
+        
+            DEBUG("MPI_Sending '%s' to '%d'", message_type_to_str(ack.type), source);
+            Send(&ack, 1, message_datatype, source, 0, MPI_COMM_WORLD);
             break;
         }
         case MT_TAKE_BOOK: {
@@ -286,8 +323,8 @@ void client_run(client_t self){
 
             sllist_add(pending_takes, l_id);
         
-            DEBUG("Sending '%s' to '%d'", message_type_to_str(lend.type), l_id);
-            MPI_Send(&lend, 1, message_datatype, l_id, 0, MPI_COMM_WORLD);
+            DEBUG("MPI_Sending '%s' to '%d'", message_type_to_str(lend.type), l_id);
+            Send(&lend, 1, message_datatype, l_id, 0, MPI_COMM_WORLD);
 
             break;
         }
@@ -313,8 +350,8 @@ void client_run(client_t self){
                 .args = {-1, -1, -1},
             };
         
-            DEBUG("Sending '%s' to '%d'", message_type_to_str(done.type), COORDINATOR_INDEX);
-            MPI_Send(&done, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
+            DEBUG("MPI_Sending '%s' to '%d'", message_type_to_str(done.type), COORDINATOR_INDEX);
+            Send(&done, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
             break;
         }
         case MT_NOTIFY_DONATE_BOOK: {
@@ -326,14 +363,25 @@ void client_run(client_t self){
             bookid_t b_id = message.args[1];
             size_t copies = message.args[2];
 
-            message_t donate = {
-                .type = MT_DONATE_BOOK,
-                .args = {b_id, copies, -1},
-            };
-        
-            DEBUG("Sending '%s' to '%d'", message_type_to_str(donate.type), self.leader);
-            MPI_Send(&donate, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
-            break;
+            if(self.node.id != self.leader){
+                message_t donate = {
+                    .type = MT_DONATE_BOOK,
+                    .args = {b_id, copies, -1},
+                };
+            
+                DEBUG("MPI_Sending '%s' to '%d'", message_type_to_str(donate.type), self.leader);
+                Send(&donate, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
+                DEBUG("Sent!!!");
+                break;
+            }else{
+                // I'm the leader, fall back to donate right away
+                message.type = MT_DONATE_BOOK;
+                message.args[0] = b_id;
+                message.args[1] = copies;
+                source = self.node.id;
+
+                FALLTHROUGH;
+            }
         }
         case MT_DONATE_BOOK: {
             if(self.node.id != self.leader){
@@ -351,11 +399,11 @@ void client_run(client_t self){
 
             for(size_t copy = 0; copy < copies; ++copy){
                 mpipid_t lib = (self.donate_next++)%(SQUARE(self.node.N)) + 1; // donate_next/(N^2)
-                DEBUG("Sending '%s' to '%d'", message_type_to_str(donate.type), lib);
-                MPI_Send(&donate, 1, message_datatype, lib, 0, MPI_COMM_WORLD);
+                DEBUG("MPI_Sending '%s' to '%d'", message_type_to_str(donate.type), lib);
+                Send(&donate, 1, message_datatype, lib, 0, MPI_COMM_WORLD);
 
                 message_t ack;
-                MPI_Recv(&ack, 1, message_datatype, lib, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                Recv(&ack, 1, message_datatype, lib, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
                 if(ack.type != MT_ACK_DB){
                     ERROR("Rogue '%s' from '%d'",message_type_to_str(ack.type), lib);
@@ -383,7 +431,7 @@ void client_run(client_t self){
                 target = source;
             }
 
-            MPI_Send(&done, 1, message_datatype, target, 0, MPI_COMM_WORLD);
+            Send(&done, 1, message_datatype, target, 0, MPI_COMM_WORLD);
 
             break;
         }
@@ -393,7 +441,7 @@ void client_run(client_t self){
                 .args = {-1, -1, -1},
             };
 
-            MPI_Send(&done, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
+            Send(&done, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
 
             break;
         }
@@ -423,7 +471,7 @@ void client_run(client_t self){
 
             if(sllist_length(self.neigbors) > 1 || source == COORDINATOR_INDEX){
                 sllist_node_t it = self.neigbors->head;
-                // Send to all neighbors except for parent (source)
+                // MPI_Send to all neighbors except for parent (source)
                 while(it){
                     if(it->elem != source){
                         message_t get_most_popular_msg = {
@@ -431,8 +479,8 @@ void client_run(client_t self){
                             .args = {-1, -1, -1},
                         };
 
-                        DEBUG("Sending '%s' to my child '%d'", message_type_to_str(get_most_popular_msg.type), it->elem);
-                        MPI_Send(&get_most_popular_msg, 1, message_datatype, it->elem, 0, MPI_COMM_WORLD);
+                        DEBUG("MPI_Sending '%s' to my child '%d'", message_type_to_str(get_most_popular_msg.type), it->elem);
+                        Send(&get_most_popular_msg, 1, message_datatype, it->elem, 0, MPI_COMM_WORLD);
                     }
                     it = it->next;
                 }
@@ -453,7 +501,7 @@ void client_run(client_t self){
                     message_t info;
                     MPI_Status status;
 
-                    MPI_Recv(&info, 1, message_datatype, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+                    Recv(&info, 1, message_datatype, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
 
                     int sender = status.MPI_SOURCE;
 
@@ -485,7 +533,7 @@ void client_run(client_t self){
                     bookstorage_pnode_t node = gathered_info[i-1];
                     if(node.count>0)
                         INFO(
-                            "Most popular book in library group #%-2d is (%2d) (cost: %2d, loaned %2ld time%s)", 
+                            "Most popular book in library group #%-2d is (%3d) (cost: %3d, loaned %2ld time%s)", 
                             i, node.book.id, node.book.cost, node.count, node.count>1?"s":""
                         );
                 }
@@ -500,7 +548,7 @@ void client_run(client_t self){
                     .args = {-1, -1, -1},
                 };
 
-                MPI_Send(&done, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
+                Send(&done, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
             }else{
                 // I'm not the leader, respond to the leader
                 message_t info = {
@@ -508,7 +556,7 @@ void client_run(client_t self){
                     .args = {mp_book.book.id, mp_book.book.cost, mp_book.count, my_lib},
                 };
                 
-                MPI_Send(&info, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
+                Send(&info, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
             }
             break;
         }
@@ -527,8 +575,8 @@ void client_run(client_t self){
                         .args = {-1, -1, -1},
                     };
 
-                    DEBUG("Sending '%s' to loaner '%d'", message_type_to_str(forward.type), it->elem);
-                    MPI_Send(&forward, 1, message_datatype, it->elem, 0, MPI_COMM_WORLD);
+                    DEBUG("MPI_Sending '%s' to loaner '%d'", message_type_to_str(forward.type), it->elem);
+                    Send(&forward, 1, message_datatype, it->elem, 0, MPI_COMM_WORLD);
                 }
 
                 it = it->next;
@@ -538,15 +586,24 @@ void client_run(client_t self){
             int books_loaned = 0;
             bookstorage_map(self.books, count_book, &books_loaned);
 
-            // Respond to leader
-            message_t books_loaned_msg = {
-                .type = MT_NUM_BOOKS_LOANED,
-                .args = {books_loaned, -1, -1},
-            };
+            if(self.node.id != self.leader){
+                // Respond to leader
+                message_t books_loaned_msg = {
+                    .type = MT_NUM_BOOKS_LOANED,
+                    .args = {books_loaned, -1, -1},
+                };
 
-            DEBUG("Sending '%s' to loaner leader '%d'", message_type_to_str(books_loaned_msg.type), self.leader);
-            MPI_Send(&books_loaned_msg, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
-            break;
+                DEBUG("MPI_Sending '%s' to loaner leader '%d'", message_type_to_str(books_loaned_msg.type), self.leader);
+                Send(&books_loaned_msg, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
+                break;
+            }else{
+                // I'm the leader, fall back to num books loaned right away
+                message.type = MT_DONATE_BOOK;
+                message.args[0] = books_loaned;
+                source = self.node.id;
+
+                FALLTHROUGH;
+            }
         }
         case MT_NUM_BOOKS_LOANED: {
             if(self.leader==-1){
@@ -584,11 +641,15 @@ void client_run(client_t self){
                     .args = {total_loaned_books, -1, -1},
                 };
 
-                DEBUG("Sending '%s' to coordinator", message_type_to_str(done.type));
-                MPI_Send(&done, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
+                DEBUG("MPI_Sending '%s' to coordinator", message_type_to_str(done.type));
+                Send(&done, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
             }
 
             break;
+        }
+        case MT_TERMINATE: {
+            DEBUG("Terminating...");
+            return;
         }
         default:
             ERROR("Unexpected message '%s' received from %d", message_type_to_str(message.type), source);

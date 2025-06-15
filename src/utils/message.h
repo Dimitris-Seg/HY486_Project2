@@ -36,11 +36,13 @@ enum message_type {
     MT_START_LEADER_ELECTION,
     MT_LE_LIBR_DONE,
     MT_LE_LIBR,
+    MT_ACK_LE_LIBR,
     MT_LEADER,
     MT_ALREADY,
     MT_PARENT,
     MT_START_LE_LOANERS,
     MT_LE_LOANERS,
+    MT_ACK_LE_LOANERS,
     MT_LE_LOANERS_DONE,
     MT_ELECT,
     MT_TAKE_BOOK,
@@ -67,6 +69,7 @@ enum message_type {
     MT_CHECK_NUM_BOOKS_LOAN,
     MT_NUM_BOOKS_LOANED,
     MT_CHECK_NUM_BOOKS_LOAN_DONE,
+    MT_TERMINATE,
 };
 
 struct message {
@@ -79,5 +82,14 @@ void mpi_create_message_struct(MPI_Datatype *newtype);
 
 // Type must be a valid message type
 string message_type_to_str(message_type_t type);
+
+// Wrapper for MPI_Isend
+int Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm);
+
+// Wrapper for MPI_Recv
+int Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag, MPI_Comm comm, MPI_Status *status);
+
+// Discards any incoming messages
+void cleanup_mpi_in_buffers();
 
 #endif

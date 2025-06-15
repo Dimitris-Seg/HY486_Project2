@@ -105,7 +105,7 @@ int main(int argc, char *argv[]){
 
         library_t lib = library_init(rank, N);
         library_run(lib);
-    }else if(rank <= N*N+(N*N*N)/2+1) {
+    }else if(rank <= N*N+(N*N*N)/2) {
         // Process simulates a borrower/client
         // floor(N^3)/2. total clients
 

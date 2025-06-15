@@ -1,8 +1,26 @@
-# Author: 	Dimitris Segkesser
-# Date: 	25/05/2025
+# Author:     Dimitris Segkesser
+# Date:       25/05/2025
 
 EXEC := mpirun
 EXECFLAGS := --oversubscribe
+
+#Makefile defined variables
+ALL_DEBUG       :=   # [DEF: 1] If true all processes can print debug logs
+FAIL_ON_ERROR   :=   # [DEF: 0] The process will automatically fail on the first error if true
+FAIL_ON_WARN    :=   # [DEF: 0] The process will automatically fail on the first warning if true
+DEBUGGING_ON    :=   # [DEF: 0] Enables debug logs (DEBUG)
+WATERMARK_ON    :=   # [DEF: 1] CSD watermark at the start
+FLUSH_OUTPUT    :=   # [DEF: 0] If true all debug (DEBUT & ERROR) output will be flushed
+COLORS          :=   # [DEF: 1] Use terminal colors
+#
+
+# Add hostfile variable (can be left empty if not needed)
+HOSTFILE :=  # e.g., ./hosts.txt
+
+# Conditionally add --hostfile flag if HOSTFILE is set
+ifneq ($(strip $(HOSTFILE)),)
+  EXECFLAGS += --hostfile $(HOSTFILE)
+endif
 
 NP0 := 23
 NUM_LIBS0 := 9
@@ -19,6 +37,15 @@ INSTR_FILE2 := "./testfiles_hy486/testfile2/loaners_62_libs_25_np_88.txt"
 
 CC := mpicc
 CFLAGS := -Wall -Wextra -std=c11 -g -MMD -MP
+
+CFLAGS += $(if $(ALL_DEBUG),-DALL_DEBUG=$(ALL_DEBUG))
+CFLAGS += $(if $(FAIL_ON_ERROR),-DFAIL_ON_ERROR=$(FAIL_ON_ERROR))
+CFLAGS += $(if $(FAIL_ON_WARN),-DFAIL_ON_WARN=$(FAIL_ON_WARN))
+CFLAGS += $(if $(DEBUGGING_ON),-DDEBUGGING_ON=$(DEBUGGING_ON))
+CFLAGS += $(if $(WATERMARK_ON),-DWATERMARK_ON=$(WATERMARK_ON))
+CFLAGS += $(if $(FLUSH_OUTPUT),-DFLUSH_OUTPUT=$(FLUSH_OUTPUT))
+CFLAGS += $(if $(COLORS),-DCOLORS=$(COLORS))
+
 LDFLAGS := -lm  # ADD MPI flag here
 SRC_DIR := ./src
 BUILD_DIR := ./build
@@ -43,7 +70,7 @@ $(TARGET): $(OBJ_FILES)
 # Compile each .c file into a .o file in /build and generate dependencies
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -c $< -o $@ 
 
 # Include dependency files to track header changes
 -include $(DEP_FILES)

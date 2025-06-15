@@ -166,7 +166,7 @@ void library_run(library_t self)
         message_t message;
         MPI_Status status;
 
-        MPI_Recv(&message, 1, message_datatype, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+        Recv(&message, 1, message_datatype, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
 
         int source = status.MPI_SOURCE;
 
@@ -193,11 +193,11 @@ void library_run(library_t self)
             {
                 // Already in the same tree
                 message_t already_msg = {
-                    .type = MT_PARENT,
+                    .type = MT_ALREADY,
                     .args = {leader, -1, -1},
                 };
 
-                MPI_Send(&already_msg, 1, message_datatype, source, 0, MPI_COMM_WORLD);
+                Send(&already_msg, 1, message_datatype, source, 0, MPI_COMM_WORLD);
             } // else the message is ignored (stalled) because it has a smaller id
             break;
         }
@@ -221,6 +221,16 @@ void library_run(library_t self)
         case MT_LE_LIBR:
         {
             self.leader = message.args[0]; // Leader id
+
+            message_t ack = {
+                .type = MT_ACK_LE_LIBR,
+                .args = {-1, -1, -1},
+            };
+        
+            cleanup_mpi_in_buffers(); // Clean up input buffer to avoid garbage
+
+            DEBUG("Sending '%s' to '%d'", message_type_to_str(ack.type), source);
+            Send(&ack, 1, message_datatype, source, 0, MPI_COMM_WORLD);
             break;
         }
         case MT_LEND_BOOK:
@@ -254,19 +264,24 @@ void library_run(library_t self)
                         exit(EXIT_FAILURE);
                     }
 
-                    message_t upd_donated = {
-                        .type = MT_UPD_DONATED,
-                        .args = {b_id, entry->count, self.node.id},
-                    };
+                    if(self.node.id != self.leader){
+                        message_t upd_donated = {
+                            .type = MT_UPD_DONATED,
+                            .args = {b_id, entry->count, self.node.id},
+                        };
 
-                    MPI_Send(&upd_donated, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
+                        Send(&upd_donated, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
 
-                    message_t ack;
-                    MPI_Recv(&ack, 1, message_datatype, self.leader, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                        message_t ack;
+                        Recv(&ack, 1, message_datatype, self.leader, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-                    if(ack.type != MT_ACK_UD){
-                        ERROR("Received rogue '%s' from '%d'", message_type_to_str(ack.type), self.leader);
-                        exit(EXIT_FAILURE);
+                        if(ack.type != MT_ACK_UD){
+                            ERROR("Received rogue '%s' from '%d'", message_type_to_str(ack.type), self.leader);
+                            exit(EXIT_FAILURE);
+                        }
+                    }else{
+                        // Update my own count since I'm the leader
+                        libdict_update_count(self.donated_locations, (book_t){.id = b_id}, self.node.id, entry->count);
                     }
                 }
 
@@ -275,7 +290,7 @@ void library_run(library_t self)
                     .args = {b_id, TRUE, res.book.cost},
                 };
 
-                MPI_Send(&get, 1, message_datatype, source, 0, MPI_COMM_WORLD);
+                Send(&get, 1, message_datatype, source, 0, MPI_COMM_WORLD);
             }else{
                 // Book not found, ask for it
 
@@ -294,10 +309,10 @@ void library_run(library_t self)
                         .args = {b_id, -1, -1},
                     };
 
-                    MPI_Send(&find, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
+                    Send(&find, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
 
                     message_t response;
-                    MPI_Recv(&response, 1, message_datatype, self.leader, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                    Recv(&response, 1, message_datatype, self.leader, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
                     if (response.type != MT_BOOK_FOUND){
                         ERROR("Rogue '%s' received from '%d'", message_type_to_str(message.type), self.leader);
@@ -305,15 +320,27 @@ void library_run(library_t self)
                     }
 
                     target_l_id = response.args[0];
-
                 }
 
-                message_t request = {
-                    .type = MT_BOOK_REQUEST,
-                    .args = {b_id, source, self.node.id},
-                };
+                if(target_l_id == self.node.id){
+                    // If the target is me, then the book doesn't exist (or I would've had it)
 
-                MPI_Send(&request, 1, message_datatype, target_l_id, 0, MPI_COMM_WORLD);
+                    ERROR("I don't have any remaining books with id '%d'", b_id);
+
+                    message_t ack = {
+                        .type = MT_ACK_TB,
+                        .args = {b_id, -1, source, BOOK_NOT_FOUND},
+                    };
+        
+                    Send(&ack, 1, message_datatype, source, 0, MPI_COMM_WORLD);
+                }else{
+                    message_t request = {
+                        .type = MT_BOOK_REQUEST,
+                        .args = {b_id, source, self.node.id},
+                    };
+
+                    Send(&request, 1, message_datatype, target_l_id, 0, MPI_COMM_WORLD);
+                }
             }
 
             break;
@@ -339,7 +366,7 @@ void library_run(library_t self)
                 .args = {-1, -1, -1},
             };
 
-            MPI_Send(&ack, 1, message_datatype, source, 0, MPI_COMM_WORLD);
+            Send(&ack, 1, message_datatype, source, 0, MPI_COMM_WORLD);
             break;
         }
         case MT_ACK_TB: {
@@ -361,10 +388,10 @@ void library_run(library_t self)
                 //         .args = {b_id, b_count, source},
                 //     };
 
-                //     MPI_Send(&upd, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
+                //     Send(&upd, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
 
                 //     message_t ack;
-                //     MPI_Recv(&ack, 1, message_datatype, self.leader, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                //     Recv(&ack, 1, message_datatype, self.leader, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
                 //     if(ack.type != MT_ACK_UD){
                 //         ERROR("Rogue '%s' received from leader, expected donation update ack", message_type_to_str(ack.type));
@@ -378,7 +405,7 @@ void library_run(library_t self)
                 .args = {b_id, b_count, b_cost, -1},
             };
 
-            MPI_Send(&ack, 1, message_datatype, c_id, 0, MPI_COMM_WORLD);
+            Send(&ack, 1, message_datatype, c_id, 0, MPI_COMM_WORLD);
             break;
         }
         case MT_FIND_BOOK:
@@ -398,7 +425,7 @@ void library_run(library_t self)
                 .args = {target_l_id, -1, -1},
             };
 
-            MPI_Send(&found, 1, message_datatype, source, 0, MPI_COMM_WORLD);
+            Send(&found, 1, message_datatype, source, 0, MPI_COMM_WORLD);
 
             break;
         }
@@ -431,8 +458,13 @@ void library_run(library_t self)
                 ERROR("I don't have any remaining books with id '%d'", b_id);
             }
 
-            // If the book is donated we should update the leader with the new count
-            if(res.successful && storage == self.donated){
+            
+            if(self.node.id == self.leader){
+                // Update my own count since I'm the leader
+                libdict_update_count(self.donated_locations, (book_t){.id = b_id}, self.node.id, entry->count);
+            }else if(res.successful && storage == self.donated){
+                // If the book is donated we should update the leader with the new count
+
                 if(self.leader==-1){
                     ERROR("Leader election required before book retrieval");
                     exit(EXIT_FAILURE);
@@ -443,10 +475,10 @@ void library_run(library_t self)
                     .args = {b_id, entry->count, self.node.id},
                 };
 
-                MPI_Send(&upd_donated, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
+                Send(&upd_donated, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
 
                 message_t ack;
-                MPI_Recv(&ack, 1, message_datatype, self.leader, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                Recv(&ack, 1, message_datatype, self.leader, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
                 if(ack.type != MT_ACK_UD){
                     ERROR("Received rogue '%s' from '%d'", message_type_to_str(ack.type), self.leader);
@@ -461,7 +493,7 @@ void library_run(library_t self)
                 .args = {b_id, b_cost, c_id, total},
             };
 
-            MPI_Send(&ack, 1, message_datatype, source, 0, MPI_COMM_WORLD);
+            Send(&ack, 1, message_datatype, source, 0, MPI_COMM_WORLD);
 
             break;
         }
@@ -482,15 +514,18 @@ void library_run(library_t self)
                     .type = MT_UPD_DONATED,
                     .args = {b_id, count, self.node.id},
                 };
-                MPI_Send(&update, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
+                Send(&update, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
 
                 message_t ack_upd;
-                MPI_Recv(&ack_upd, 1, message_datatype, self.leader, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                Recv(&ack_upd, 1, message_datatype, self.leader, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
                 if(ack_upd.type != MT_ACK_UD){
                     ERROR("Rogue '%s' received from leader, expected donation update ack", message_type_to_str(ack_upd.type));
                     exit(EXIT_FAILURE);
                 }
+            }else{
+                // Update my own count since I'm the leader
+                libdict_update_count(self.donated_locations, (book_t){.id = b_id}, self.node.id, entry->count);
             }
 
             message_t ack = {
@@ -498,7 +533,7 @@ void library_run(library_t self)
                 .args = {-1, -1, -1},
             };
             
-            MPI_Send(&ack, 1, message_datatype, source, 0, MPI_COMM_WORLD);
+            Send(&ack, 1, message_datatype, source, 0, MPI_COMM_WORLD);
 
             break;
         }
@@ -518,26 +553,32 @@ void library_run(library_t self)
                 total_loaned_books = 0;             // Reset state
                 sllist_removeAll(book_loaned_acks); //
 
-                message_t start = {
+                // If the first library is not the leader we tell it to check num books
+                if(self.node.id != FIRST_LIBRARY){
+                    message_t start = {
+                        .type = MT_CHECK_NUM_BOOKS_LOAN,
+                        .args = {-1, -1, -1},
+                    };
+                    
+                    
+                    DEBUG("Sending '%s' to library '%d'", message_type_to_str(start.type), FIRST_LIBRARY);
+                    Send(&start, 1, message_datatype, FIRST_LIBRARY, 0, MPI_COMM_WORLD);
+                    break;
+                }
+            }
+            // Forward to next in grid if such a node exists
+            mpipid_t next_route = next_route_in_grid(self);
+            if(next_route!=-1){
+                message_t forward = {
                     .type = MT_CHECK_NUM_BOOKS_LOAN,
                     .args = {-1, -1, -1},
                 };
 
-                DEBUG("Sending '%s' to library '%d'", message_type_to_str(start.type), FIRST_LIBRARY);
-                MPI_Send(&start, 1, message_datatype, FIRST_LIBRARY, 0, MPI_COMM_WORLD);
-            }else{
-                // Forward to next in grid if such a node exists
-                mpipid_t next_route = next_route_in_grid(self);
-                if(next_route!=-1){
-                    message_t forward = {
-                        .type = MT_CHECK_NUM_BOOKS_LOAN,
-                        .args = {-1, -1, -1},
-                    };
+                DEBUG("Sending '%s' to library '%d'", message_type_to_str(forward.type), next_route);
+                Send(&forward, 1, message_datatype, next_route, 0, MPI_COMM_WORLD);
+            }
 
-                    DEBUG("Sending '%s' to library '%d'", message_type_to_str(forward.type), next_route);
-                    MPI_Send(&forward, 1, message_datatype, next_route, 0, MPI_COMM_WORLD);
-                }
-
+            if(self.node.id != self.leader){
                 // Respond to leader
                 message_t books_loaned_msg = {
                     .type = MT_NUM_BOOKS_LOANED,
@@ -545,9 +586,16 @@ void library_run(library_t self)
                 };
 
                 DEBUG("Sending '%s' to library leader '%d'", message_type_to_str(books_loaned_msg.type), self.leader);
-                MPI_Send(&books_loaned_msg, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
+                Send(&books_loaned_msg, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
+                break;
+            }else{
+                // I'm the leader, fall back to num books loaned right away
+                message.type = MT_DONATE_BOOK;
+                message.args[0] = self.books_loaned;
+                source = self.node.id;
+
+                FALLTHROUGH;
             }
-            break;
         }
         case MT_NUM_BOOKS_LOANED: {
             if(self.leader==-1){
@@ -586,10 +634,14 @@ void library_run(library_t self)
                 };
 
                 DEBUG("Sending '%s' to coordinator", message_type_to_str(done.type));
-                MPI_Send(&done, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
+                Send(&done, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
             }
 
             break;
+        }
+        case MT_TERMINATE: {
+            DEBUG("Terminating...");
+            return;
         }
         default:
             ERROR("Unexpected message '%s' received from %d", message_type_to_str(message.type), source);
@@ -607,7 +659,7 @@ void library_run(library_t self)
                 };
 
                 DEBUG("Sending '%s' to '%d'", message_type_to_str(explore_msg.type), proc_id);
-                MPI_Send(&explore_msg, 1, message_datatype, proc_id, 0, MPI_COMM_WORLD);
+                Send(&explore_msg, 1, message_datatype, proc_id, 0, MPI_COMM_WORLD);
             }
             else
             {
@@ -619,13 +671,13 @@ void library_run(library_t self)
                     };
 
                     DEBUG("Sending '%s' to '%d'", message_type_to_str(parent_msg.type), parent);
-                    MPI_Send(&parent_msg, 1, message_datatype, parent, 0, MPI_COMM_WORLD);
+                    Send(&parent_msg, 1, message_datatype, parent, 0, MPI_COMM_WORLD);
                 }
                 else
                 {
                     // I'm root so send elect done to coordinator
 
-                    size_t book_locations_len = self.node.N * self.node.N * self.node.N; // N^3 instead of N^4
+                    size_t book_locations_len = CUBE(self.node.N); // N^3 instead of N^4
 
                     // Create book locations array if it doesn't exist (this should always hold unless misused)
                     if (!self.book_locations)
@@ -635,7 +687,7 @@ void library_run(library_t self)
                         // Initialize entries
                         for (size_t b_id = 0; b_id < book_locations_len; ++b_id)
                         {
-                            self.book_locations[b_id] = b_id / self.node.N + 1; // N^2
+                            self.book_locations[b_id] = b_id / self.node.N + 1;
                         }
                     }
 
@@ -652,22 +704,50 @@ void library_run(library_t self)
 
                     self.leader = self.node.id;
 
+                    sllist_t pending_le_acks = sllist_create();
+
                     // Broadcast election result to all libraries except self
                     for (int id = 1; id <= self.node.N * self.node.N; ++id)
                     { // All library ids
                         if (id == self.node.id)
                             continue;
 
-                        MPI_Send(&elect_result, 1, message_datatype, id, 0, MPI_COMM_WORLD);
+                        sllist_add(pending_le_acks, id);
+
+                        Send(&elect_result, 1, message_datatype, id, 0, MPI_COMM_WORLD);
                         DEBUG("Sent '%s' to %d", message_type_to_str(elect_result.type), id);
                     }
+
+                    // Ensure everyone knows the elected leader before finishing
+                    while(!sllist_empty(pending_le_acks)){
+                        message_t ack;
+                        MPI_Status status;
+
+                        Recv(&ack, 1, message_datatype, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+
+                        int sender = status.MPI_SOURCE;
+
+                        if(ack.type != MT_ACK_LE_LIBR)continue; // Not what I'm looking for
+
+                        if(!sllist_search(pending_le_acks, sender)){
+                            ERROR("Duplicate '%s' from '%d'", message_type_to_str(ack.type), sender);
+                            exit(EXIT_FAILURE);
+                        }
+
+                        sllist_remove(pending_le_acks, sender);
+                    }
+
+                    cleanup_mpi_in_buffers(); // Clean up input buffer to avoid garbage
+
+                    sllist_destroy(pending_le_acks); // Not needed anymore
 
                     message_t elect_done_msg = {
                         .type = MT_LE_LIBR_DONE,
                         .args = {self.node.id, -1, -1},
                     };
 
-                    MPI_Send(&elect_done_msg, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
+                    
+                    Send(&elect_done_msg, 1, message_datatype, COORDINATOR_INDEX, 0, MPI_COMM_WORLD);
                 }
             }
         }

@@ -31,13 +31,33 @@ extern bool debugger;       // Regulates which processes are allowed to print (e
 extern string process_name; // The current process name for debugging purposes
 extern int process_id;      // The current process id for debugging purposes
 
+#ifndef ALL_DEBUG
 #define ALL_DEBUG       1 // If true all processes can print debug logs
+#endif
+
+#ifndef FAIL_ON_ERROR
 #define FAIL_ON_ERROR   0 // The process will automatically fail on the first error if true
+#endif
+
+#ifndef FAIL_ON_WARN
 #define FAIL_ON_WARN    0 // The process will automatically fail on the first warning if true
+#endif
+
+#ifndef DEBUGGING_ON
 #define DEBUGGING_ON    0 // Enables debug logs (DEBUG)
+#endif
+
+#ifndef WATERMARK_ON
 #define WATERMARK_ON    1 // CSD watermark at the start
+#endif
+
+#ifndef FLUSH_OUTPUT
 #define FLUSH_OUTPUT    0 // If true all debug (DEBUT & ERROR) output will be flushed
+#endif
+
+#ifndef COLORS
 #define COLORS          1 // Use terminal colors
+#endif
 
 #if ALL_DEBUG
     #define ENABLE_DEBUGGER() ((void)0)

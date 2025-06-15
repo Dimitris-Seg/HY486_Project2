@@ -49,12 +49,12 @@ static void coordinator_connect(coordinator_t* self, int src, int target){
         &message_datatype
     );
 
-    MPI_Send(&message, 1, message_datatype, src, 0, MPI_COMM_WORLD);
+    Send(&message, 1, message_datatype, src, 0, MPI_COMM_WORLD);
     DEBUG("Sent '%s' to %d", message_type_to_str(MT_CONNECT), src);
 
     message_t response;
 
-    MPI_Recv(&response, 1, message_datatype, src, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    Recv(&response, 1, message_datatype, src, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
     if(response.type != MT_ACK){
         ERROR("Expected '%s' from node '%d', got '%s'", message_type_to_str(MT_ACK), target, message_type_to_str(response.type));
@@ -77,14 +77,14 @@ static void coordinator_le_libr(coordinator_t* self){
 
     // Broadcast election start to all libraries
     for(int id=1; id<=self->node.N*self->node.N; ++id){ // All library ids
-        MPI_Send(&elect_msg, 1, message_datatype, id, 0, MPI_COMM_WORLD);
+        Send(&elect_msg, 1, message_datatype, id, 0, MPI_COMM_WORLD);
         DEBUG("Sent '%s' to %d", message_type_to_str(elect_msg.type), id);
     }
 
     // Receive election done from elected process (leader)
     message_t response;
     MPI_Status status;
-    MPI_Recv(&response, 1, message_datatype, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+    Recv(&response, 1, message_datatype, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
     //
     if(response.type != MT_LE_LIBR_DONE){ // Enforce strict check if we didn't expect this
         ERROR("Received rogue '%s' from process '%d'", message_type_to_str(response.type), status.MPI_SOURCE);
@@ -111,16 +111,16 @@ static void coordinator_le_loaners(coordinator_t* self){
     );
 
     // Broadcast election start to all loaners
-    int start_index = self->node.N*self->node.N+1;
-    for(int id=start_index; id<start_index+(self->node.N*self->node.N*self->node.N)/2; ++id){ // All loaner ids
-        MPI_Send(&elect_msg, 1, message_datatype, id, 0, MPI_COMM_WORLD);
+    int start_index = SQUARE(self->node.N)+1;
+    for(int id=start_index; id<start_index+(CUBE(self->node.N))/2; ++id){ // All loaner ids
+        Send(&elect_msg, 1, message_datatype, id, 0, MPI_COMM_WORLD);
         DEBUG("Sent '%s' to %d", message_type_to_str(elect_msg.type), id);
     }
 
     // Receive election done from elected process (leader)
     message_t response;
     MPI_Status status;
-    MPI_Recv(&response, 1, message_datatype, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+    Recv(&response, 1, message_datatype, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
     //
     if(response.type != MT_LE_LOANERS_DONE){ // Enforce strict check if we didn't expect this
         ERROR("Received rogue '%s' from process '%d'", message_type_to_str(response.type), status.MPI_SOURCE);
@@ -148,12 +148,12 @@ static void coordinator_take_book(coordinator_t* self, int c_id, int b_id){
         &message_datatype
     );
 
-    MPI_Send(&take_msg, 1, message_datatype, c_id, 0, MPI_COMM_WORLD);
+    Send(&take_msg, 1, message_datatype, c_id, 0, MPI_COMM_WORLD);
     DEBUG("Sent '%s' to %d", message_type_to_str(take_msg.type), c_id);
 
     message_t response;
     MPI_Status status;
-    MPI_Recv(&response, 1, message_datatype, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+    Recv(&response, 1, message_datatype, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
 
     if(response.type != MT_DONE_FIND_BOOK){
         ERROR("Received rogue '%s' from process '%d'", message_type_to_str(response.type), status.MPI_SOURCE);
@@ -174,13 +174,13 @@ static void coordinator_donate_book(coordinator_t* self, int c_id, int b_id, int
         &message_datatype
     );
 
-    MPI_Send(&donate_msg, 1, message_datatype, c_id, 0, MPI_COMM_WORLD);
+    Send(&donate_msg, 1, message_datatype, c_id, 0, MPI_COMM_WORLD);
     DEBUG("Sent '%s' to %d", message_type_to_str(donate_msg.type), c_id);
 
     DEBUG("RECEIVING RESPONSE NOTIFY! (%d)", c_id);
 
     message_t response;
-    MPI_Recv(&response, 1, message_datatype, c_id, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    Recv(&response, 1, message_datatype, c_id, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
     DEBUG("RECEIVED RESPONSE NOTIFY!");
 
@@ -206,10 +206,10 @@ static void coordinator_get_most_popular_book(coordinator_t* self){
         exit(EXIT_FAILURE);
     }
 
-    MPI_Send(&get_most_popular_msg, 1, message_datatype, self->loaner_leader.id, 0, MPI_COMM_WORLD);
+    Send(&get_most_popular_msg, 1, message_datatype, self->loaner_leader.id, 0, MPI_COMM_WORLD);
 
     message_t response;
-    MPI_Recv(&response, 1, message_datatype, self->loaner_leader.id, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    Recv(&response, 1, message_datatype, self->loaner_leader.id, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
     if(response.type != MT_GET_MOST_POPULAR_BOOK_DONE){
         ERROR("Received rogue '%s' from process '%d'", message_type_to_str(response.type), self->loaner_leader.id);
@@ -234,19 +234,19 @@ static void coordinator_check_num_books_loaned(coordinator_t* self){
     }
 
     // Send to library leader and loaner leader
-    MPI_Send(&check_num_books_msg, 1, message_datatype, self->lib_leader.id, 0, MPI_COMM_WORLD);
-    MPI_Send(&check_num_books_msg, 1, message_datatype, self->loaner_leader.id, 0, MPI_COMM_WORLD);
+    Send(&check_num_books_msg, 1, message_datatype, self->lib_leader.id, 0, MPI_COMM_WORLD);
+    Send(&check_num_books_msg, 1, message_datatype, self->loaner_leader.id, 0, MPI_COMM_WORLD);
 
     message_t lib_response;
     message_t loaner_response;
 
-    MPI_Recv(&lib_response, 1, message_datatype, self->lib_leader.id, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    Recv(&lib_response, 1, message_datatype, self->lib_leader.id, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     if(lib_response.type != MT_CHECK_NUM_BOOKS_LOAN_DONE){
         ERROR("Received rogue '%s' from process '%d'", message_type_to_str(lib_response.type), self->lib_leader.id);
         exit(EXIT_FAILURE);
     }   
 
-    MPI_Recv(&loaner_response, 1, message_datatype, self->loaner_leader.id, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    Recv(&loaner_response, 1, message_datatype, self->loaner_leader.id, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     if(loaner_response.type != MT_CHECK_NUM_BOOKS_LOAN_DONE){
         ERROR("Received rogue '%s' from process '%d'", message_type_to_str(loaner_response.type), self->loaner_leader.id);
         exit(EXIT_FAILURE);
@@ -256,6 +256,26 @@ static void coordinator_check_num_books_loaned(coordinator_t* self){
     int b2 = lib_response.args[0];
 
     INFO("CheckNumBooksLoaned %s", b1==b2?"SUCCESS":"FAILED");
+}
+
+static void coordinator_terminate(coordinator_t* self){
+    message_t terminate = {
+        .type = MT_TERMINATE,
+        .args = {-1, -1, -1},
+    };
+
+    MPI_Datatype message_datatype;
+    mpi_create_message_struct(
+        &message_datatype
+    );
+
+    INFO("Terminating...");
+
+    // Broadcast election start to all loaners
+    for(int id=1; id<=SQUARE(self->node.N)+CUBE(self->node.N)/2; ++id){ // All loaner ids
+        Send(&terminate, 1, message_datatype, id, 0, MPI_COMM_WORLD);
+        DEBUG("Sent '%s' to %d", message_type_to_str(terminate.type), id);
+    }
 }
 
 void coordinator_run(coordinator_t* self){
@@ -341,4 +361,6 @@ void coordinator_run(coordinator_t* self){
 
         ++coordinator_index; // Next instruction
     }
+
+    coordinator_terminate(self); // Notify all processes to terminate
 }

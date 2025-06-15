@@ -38,6 +38,13 @@
 #define FIRST_LIBRARY 1     // Do not change, only for readability
 #define COORDINATOR_INDEX 0 // Do not change, only for readability
 
+#if defined(__GNUC__) && __GNUC__ >= 7
+#define FALLTHROUGH __attribute__((fallthrough))
+#else
+#define FALLTHROUGH /* fallthrough */
+#endif
+
+
 typedef int                 mpipid_t;
 typedef struct mpiproc      mpiproc_t;
 typedef struct gridpos      gridpos_t;

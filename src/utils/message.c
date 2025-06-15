@@ -21,6 +21,32 @@
 #include "message.h"
 //
 
+int Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm){
+    int res = MPI_Send(buf, count, datatype, dest, tag, comm);
+    return res;
+}
+
+int Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag, MPI_Comm comm, MPI_Status *status){
+    int res = MPI_Recv(buf, count, datatype, source, tag, comm,  status);
+    return res;
+}
+
+void cleanup_mpi_in_buffers(){
+    MPI_Status status;
+    int flag;
+    do {
+        MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &flag, &status);
+        if (flag) {
+            message_t discarded;
+            MPI_Datatype message_datatype;
+            mpi_create_message_struct(
+                &message_datatype
+            );
+            Recv(&discarded, 1, message_datatype, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+        }
+    } while (flag);
+}
+
 void mpi_create_message_struct(MPI_Datatype *newtype){
     message_t message;
 
@@ -50,11 +76,13 @@ string message_type_to_str(message_type_t type){
         "START_LEADER_ELECTION",
         "LE_LIBR_DONE",
         "MT_LE_LIBR",
+        "MT_ACK_LE_LIBR",
         "LEADER",
         "ALREADY",
         "PARENT",
         "START_LE_LOANERS",
         "LE_LOANERS",
+        "MT_ACK_LE_LOANERS",
         "LE_LOANERS_DONE",
         "ELECT",
         "TAKE_BOOK",
@@ -81,6 +109,7 @@ string message_type_to_str(message_type_t type){
         "CHECK_NUM_BOOKS_LOAN",
         "NUM_BOOKS_LOANED",
         "CHECK_NUM_BOOKS_LOAN_DONE",
+        "TERMINATE",
     };
 
     return names[type];
