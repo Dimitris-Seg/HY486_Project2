@@ -154,6 +154,8 @@ void library_run(library_t self)
     int leader = self.node.id;
     int parent = self.node.id;
 
+    bool le_started = FALSE; // For the leader to avoid leftover garbage
+
     int total_loaned_books = 0;
     sllist_t book_loaned_acks = sllist_create();
 
@@ -175,6 +177,7 @@ void library_run(library_t self)
         switch (message.type){
         case MT_START_LEADER_ELECTION:
         {
+            le_started = TRUE;
             explore = TRUE;
             break;
         }
@@ -220,6 +223,8 @@ void library_run(library_t self)
         }
         case MT_LE_LIBR:
         {
+            le_started = FALSE;
+
             self.leader = message.args[0]; // Leader id
 
             message_t ack = {
@@ -677,6 +682,8 @@ void library_run(library_t self)
                 {
                     // I'm root so send elect done to coordinator
 
+                    if(!le_started)break; // Ignore (garbage because of out-of-suync parent or leader messages resulting 'explore')
+
                     size_t book_locations_len = CUBE(self.node.N); // N^3 instead of N^4
 
                     // Create book locations array if it doesn't exist (this should always hold unless misused)
@@ -717,6 +724,8 @@ void library_run(library_t self)
                         Send(&elect_result, 1, message_datatype, id, 0, MPI_COMM_WORLD);
                         DEBUG("Sent '%s' to %d", message_type_to_str(elect_result.type), id);
                     }
+
+                    le_started = FALSE;
 
                     // Ensure everyone knows the elected leader before finishing
                     while(!sllist_empty(pending_le_acks)){

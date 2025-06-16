@@ -47,9 +47,25 @@ void print_neighbor(sllist_node_t node, void *ignored){
 }
 
 // Dynamically compute the client's corresponding library
-static mpipid_t mylib(client_t self){
-    return 2*(self.node.id-SQUARE(self.node.N))/((SQUARE(self.node.N)*self.node.N)/(double)SQUARE(self.node.N))+1;
+static mpipid_t mylib(client_t self) {
+    int N = self.node.N;
+    int id = self.node.id;
+
+    int total_clients = (N * N * N) / 2;
+    int total_libraries = N * N;
+    int clients_per_library = (total_clients + total_libraries - 1) / total_libraries;
+
+    int local_id = id - total_libraries - 1; // subtract libraries and coordinator
+
+    mpipid_t res = (local_id / clients_per_library) + 1;
+
+    if(res<=0 || res>total_libraries){
+        ERROR("mylib overflowed libraries, wrapping-around");
+        res = (res - 1)%total_libraries + 1;
+    }
+    return res;  // library IDs are 1-based
 }
+
 
 void send_to_neighbor(sllist_node_t node, void *datatype){
     assert(node && datatype);
@@ -487,13 +503,10 @@ void client_run(client_t self){
             }
 
             if(self.node.id == self.leader){
+
                 int total_libraries = SQUARE(self.node.N);
                 int total_loaners = CUBE(self.node.N)/2;
                 bookstorage_pnode_t* gathered_info = safe_calloc(total_libraries, sizeof(bookstorage_pnode_t));
-
-                for(int i=1;i<total_libraries;++i){
-                    gathered_info[i-1].count = 0;
-                }
 
                 gathered_info[my_lib-1] = mp_book; // Initialize with my own
 
@@ -514,6 +527,11 @@ void client_run(client_t self){
                     bookid_t b_cost     = info.args[1];
                     bookid_t b_times    = info.args[2];
                     bookid_t l_id       = info.args[3];
+                    
+                    if(l_id<1){
+                        ERROR("Invalid l_id '%d' received from '%d' during '%s'", l_id, sender, message_type_to_str(info.type));
+                        exit(EXIT_FAILURE);
+                    }
 
                     sllist_add(bk_info_received, sender);
                     

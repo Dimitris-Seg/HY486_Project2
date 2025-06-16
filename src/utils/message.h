@@ -80,6 +80,9 @@ struct message {
 // Initializes an MPI_Datatype for the message struct
 void mpi_create_message_struct(MPI_Datatype *newtype);
 
+// Frees an MPI_Datatype previously created with mpi_create_message_struct
+void mpi_destroy_message_struct(MPI_Datatype *type);
+
 // Type must be a valid message type
 string message_type_to_str(message_type_t type);
 

@@ -52,7 +52,7 @@ extern int process_id;      // The current process id for debugging purposes
 #endif
 
 #ifndef FLUSH_OUTPUT
-#define FLUSH_OUTPUT    0 // If true all debug (DEBUT & ERROR) output will be flushed
+#define FLUSH_OUTPUT    0 // If true all debug (DEBUG & ERROR) output will be flushed
 #endif
 
 #ifndef COLORS

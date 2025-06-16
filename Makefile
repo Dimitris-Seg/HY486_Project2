@@ -10,7 +10,7 @@ FAIL_ON_ERROR   :=   # [DEF: 0] The process will automatically fail on the first
 FAIL_ON_WARN    :=   # [DEF: 0] The process will automatically fail on the first warning if true
 DEBUGGING_ON    :=   # [DEF: 0] Enables debug logs (DEBUG)
 WATERMARK_ON    :=   # [DEF: 1] CSD watermark at the start
-FLUSH_OUTPUT    :=   # [DEF: 0] If true all debug (DEBUT & ERROR) output will be flushed
+FLUSH_OUTPUT    :=   # [DEF: 0] If true all debug (DEBUG & ERROR) output will be flushed
 COLORS          :=   # [DEF: 1] Use terminal colors
 #
 

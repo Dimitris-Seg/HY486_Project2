@@ -32,19 +32,21 @@ int Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag, MPI_C
 }
 
 void cleanup_mpi_in_buffers(){
-    MPI_Status status;
+    MPI_Datatype message_datatype;
+    mpi_create_message_struct(
+        &message_datatype
+    );
+    
     int flag;
     do {
-        MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &flag, &status);
+        MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &flag, MPI_STATUS_IGNORE);
         if (flag) {
             message_t discarded;
-            MPI_Datatype message_datatype;
-            mpi_create_message_struct(
-                &message_datatype
-            );
-            Recv(&discarded, 1, message_datatype, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+            Recv(&discarded, 1, message_datatype, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         }
     } while (flag);
+
+    mpi_destroy_message_struct(&message_datatype);
 }
 
 void mpi_create_message_struct(MPI_Datatype *newtype){
@@ -65,6 +67,10 @@ void mpi_create_message_struct(MPI_Datatype *newtype){
 
     MPI_Type_create_struct(2, block_lengths, displacements, types, newtype);
     MPI_Type_commit(newtype);
+}
+
+void mpi_destroy_message_struct(MPI_Datatype *type){
+    MPI_Type_free(type);
 }
 
 // Type must be a valid message type
