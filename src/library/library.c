@@ -592,15 +592,9 @@ void library_run(library_t self)
 
                 DEBUG("Sending '%s' to library leader '%d'", message_type_to_str(books_loaned_msg.type), self.leader);
                 Send(&books_loaned_msg, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
-                break;
-            }else{
-                // I'm the leader, fall back to num books loaned right away
-                message.type = MT_DONATE_BOOK;
-                message.args[0] = self.books_loaned;
-                source = self.node.id;
-
-                FALLTHROUGH;
             }
+
+            break;
         }
         case MT_NUM_BOOKS_LOANED: {
             if(self.leader==-1){
@@ -630,7 +624,9 @@ void library_run(library_t self)
             total_loaned_books += new_loans;
 
             // If I've received a message from all libraries
-            if(sllist_length(book_loaned_acks) == SQUARE(self.node.N)){
+            if((int)sllist_length(book_loaned_acks) == SQUARE(self.node.N) - 1){ // - myself
+                total_loaned_books += self.books_loaned;
+
                 INFO("Library Books: %d", total_loaned_books);
 
                 message_t done = {

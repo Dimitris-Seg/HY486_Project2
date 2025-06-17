@@ -385,9 +385,7 @@ void client_run(client_t self){
                     .args = {b_id, copies, -1},
                 };
             
-                DEBUG("MPI_Sending '%s' to '%d'", message_type_to_str(donate.type), self.leader);
                 Send(&donate, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
-                DEBUG("Sent!!!");
                 break;
             }else{
                 // I'm the leader, fall back to donate right away
@@ -584,6 +582,16 @@ void client_run(client_t self){
                 exit(EXIT_FAILURE);
             }
 
+            if(source == COORDINATOR_INDEX){
+                if(self.node.id != self.leader){
+                    ERROR("Coordinator sent '%s' to non-leader '%d'", message_type_to_str(message.type), self.node.id);
+                    exit(EXIT_FAILURE);
+                }
+                
+                sllist_removeAll(book_loaned_acks); // Reset state
+                total_loaned_books = 0;             //
+            }
+
             // Forward to all neighbors (if any) except sender
             sllist_node_t it = self.neigbors->head;
             while(it){
@@ -613,15 +621,9 @@ void client_run(client_t self){
 
                 DEBUG("MPI_Sending '%s' to loaner leader '%d'", message_type_to_str(books_loaned_msg.type), self.leader);
                 Send(&books_loaned_msg, 1, message_datatype, self.leader, 0, MPI_COMM_WORLD);
-                break;
-            }else{
-                // I'm the leader, fall back to num books loaned right away
-                message.type = MT_DONATE_BOOK;
-                message.args[0] = books_loaned;
-                source = self.node.id;
-
-                FALLTHROUGH;
             }
+            
+            break;
         }
         case MT_NUM_BOOKS_LOANED: {
             if(self.leader==-1){
@@ -651,7 +653,11 @@ void client_run(client_t self){
             total_loaned_books += new_loans;
 
             // If I've received a message from all loaners
-            if((int)sllist_length(book_loaned_acks) == CUBE(self.node.N)/2){
+            if((int)sllist_length(book_loaned_acks) == CUBE(self.node.N)/2 - 1){ // - myself
+
+                // Add my books
+                bookstorage_map(self.books, count_book, &total_loaned_books);
+
                 INFO("Loaner Books: %d", total_loaned_books);
 
                 message_t done = {
