@@ -1,5 +1,4 @@
-Όνομα: Δημήτρης Σέγκεσσερ
-A.M.: 5006
+Δημήτρης Σέγκεσσερ a.k.a. csd5006
 =================================================
 Project 2 HY-486
 Computer Science Department, University Of Crete
